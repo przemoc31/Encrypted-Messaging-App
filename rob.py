@@ -5,11 +5,19 @@ from threading import Thread
 import time
 import tkinter
 import customtkinter
+import select
 
+<<<<<<< HEAD
 HOST_IP = '192.168.42.37'
 RECIPIENT_IP = '192.168.42.37'
 SERVER_PORT = 2023
 CLIENT_PORT = 2022
+=======
+HOST_IP = '192.168.0.158'
+RECIPIENT_IP = '192.168.0.158'
+SERVER_PORT = 2022
+CLIENT_PORT = 2023
+>>>>>>> 2e2a0785585f00691ddc59c27a0963b76a04276d
 MSG_LENGTH = 1024
 ENCODING = "utf-8"
 
@@ -28,10 +36,10 @@ class Server:
         self.logger = logger
 
     def __del__(self):
-        if self.serverSocket is not None:
-            self.serverSocket.close()
         if self.clientSocket is not None:
             self.clientSocket.close()
+        if self.serverSocket is not None:
+            self.serverSocket.close()
         self.logger.log("Shutting down server " + self.ip)
 
     def run(self):
@@ -40,7 +48,7 @@ class Server:
             self.serverSocket.listen(1)
             self.logger.log("Start listening...")
             # print("SERVER: " + str(threading.current_thread().getName()))
-            listenerThread = Thread(target=self.listen, name="Server Listener")
+            listenerThread = Thread(target=self.listen, name="Server Listener", daemon=True)
             listenerThread.start()
             return True
         except:
@@ -48,28 +56,35 @@ class Server:
 
     def listen(self):
         while True:
-            # print("SERVER: " + str(threading.current_thread().getName()))
-            if type(self.serverSocket).__name__ == "socket":
-                self.clientSocket, clientIpPort = self.serverSocket.accept()
+            print("SERVER: " + str(threading.current_thread().getName()))
+            try:
+                #print(str(self.serverSocket))
+                serverSocketName = self.serverSocket.getsockname()
+                (self.clientSocket, clientIpPort) = self.serverSocket.accept()
                 self.clientIp = clientIpPort[0]
                 self.logger.log("Establieshed connection with client: " + str(self.clientIp))
                 receiverThread = threading.Thread(target=self.receiveMessage, name="Server Receiver", daemon=True)
                 receiverThread.start()
-            else:
+            except socket.error:
+                self.logger.log("Server Socket: " + str(serverSocketName) + " has been closed")
                 break
 
     def receiveMessage(self):
         while True:
             # print("SERVER: " + str(threading.current_thread().getName()))
             try:
+                (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
                 message = self.clientSocket.recv(MSG_LENGTH).decode()
-            except socket.error:
-                self.logger.log("Client " + self.clientIp + " has been disconnected!")
-                time.sleep(1)
-                break
+                if len(message) > 0:
+                    self.logger.log("Received Message: " + message)
+                elif len(message) == 0:
+                    self.logger.log("Client " + self.clientIp + " has been disconnected!")
+                    break
 
-            if message != "":
-                self.logger.log("Received Message: " + message)
+            except select.error:
+                self.logger.log("Client " + self.clientIp + " has been disconnected!")
+                self.clientSocket.close()
+                break
 
 
 class Client:
@@ -103,7 +118,10 @@ class Client:
         try:
             self.clientSocket.send(message.encode())
         except socket.error:
-            self.logger.log("Server " + self.serverIp + " has been disconnected!")
+            if self.serverIp is not None:
+                self.logger.log("Server " + self.serverIp + " has been disconnected!")
+            else:
+                self.logger.log("You are not allowed to send a message. Connect to the server!")
 
     def detectMessage(self, message):
         if message is not None:
@@ -220,7 +238,10 @@ class GUI(customtkinter.CTk):
         message = self.messageInput.get()
         self.messageInput.delete(0, "end")
         self.messageInput.clear_placeholder()
-        self.__client.detectMessage(message)
+        try:
+            self.__client.detectMessage(message)
+        except AttributeError:
+            self.messageBox.config(text=self.messageBox.cget("text") + "You are not allowed to send a message. Connect to the server!" + "\n")
 
     def switchMode(self):
         if self.modeSwitch.get() == 1:
@@ -252,10 +273,6 @@ class Logger:
 
     def log(self, text):
         self.gui.messageBox.config(text=self.gui.messageBox.cget("text") + text + "\n")
-
-
-def messageBoxOverwrite(gui, text):
-    gui.messageBox.config(text=text + "\n")
 
 
 def setUpServer(gui):
