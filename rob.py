@@ -7,17 +7,10 @@ import tkinter
 import customtkinter
 import select
 
-<<<<<<< HEAD
-HOST_IP = '192.168.42.37'
-RECIPIENT_IP = '192.168.42.37'
-SERVER_PORT = 2023
-CLIENT_PORT = 2022
-=======
 HOST_IP = '192.168.0.158'
 RECIPIENT_IP = '192.168.0.158'
 SERVER_PORT = 2022
 CLIENT_PORT = 2023
->>>>>>> 2e2a0785585f00691ddc59c27a0963b76a04276d
 MSG_LENGTH = 1024
 ENCODING = "utf-8"
 
