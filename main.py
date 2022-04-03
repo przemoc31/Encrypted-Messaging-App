@@ -6,15 +6,15 @@ import time
 import tkinter
 import customtkinter
 
-HOST_IP = '192.168.0.158'
-RECIPIENT_IP = '192.168.0.158'
+HOST_IP = '192.168.42.37'
+RECIPIENT_IP = '192.168.42.37'
 SERVER_PORT = 2022
 CLIENT_PORT = 2023
 MSG_LENGTH = 1024
 ENCODING = "utf-8"
 
 
-class Server():
+class Server:
     gui = None
     serverSocket = None
     clientSocket = None
@@ -46,7 +46,6 @@ class Server():
         except:
             return False
 
-
     def listen(self):
         while True:
             # print("SERVER: " + str(threading.current_thread().getName()))
@@ -73,7 +72,7 @@ class Server():
                 self.logger.log("Received Message: " + message)
 
 
-class Client():
+class Client:
     clientSocket = None
     ip = None
     serverIp = None
@@ -131,7 +130,7 @@ class GUI(customtkinter.CTk):
         # EXIT PROTOCOL
         self.protocol("WM_DELETE_WINDOW", self.shutDown)
         self.bind("<Escape>", self.shutDown)
-        self.bind("<Return>", self.handleSending)
+        self.bind('<Return>', self.key_press)
 
         # FRAME
         self.grid_columnconfigure(1, weight=1)
@@ -213,6 +212,9 @@ class GUI(customtkinter.CTk):
             # TURN OFF CLIENT
             self.clientButton.config(fg_color=self.sendButton.fg_color)
             self.__client.__del__()
+
+    def key_press(self, event):
+        self.handleSending()
 
     def handleSending(self):
         message = self.messageInput.get()
