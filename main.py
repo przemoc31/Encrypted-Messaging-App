@@ -1,3 +1,4 @@
+from operator import ge
 import socket
 import sys
 import threading
@@ -6,13 +7,89 @@ import time
 import tkinter
 import customtkinter
 import select
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+import os
+import hashlib
+from base64 import b64decode
+from base64 import b64encode
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad, unpad
 
-HOST_IP = '192.168.42.37'
-RECIPIENT_IP = '192.168.42.37'
+HOST_IP = '192.168.0.158'
+RECIPIENT_IP = '192.168.0.158'
 SERVER_PORT = 2022
 CLIENT_PORT = 2023
 MSG_LENGTH = 1024
 ENCODING = "utf-8"
+ACK_MESSAGE = f"Server {HOST_IP} received a message"
+PRIVATE_KEY_PATH = "private_key.pem"
+PUBLIC_KEY_PATH = "public_key.pem"
+
+class Encryptor:
+    privateKeyPassword = None
+    iv = None
+
+    def __init__(self):
+        self.privateKeyPassword = b"JD"
+
+    def generateHash(self, password):
+        result = hashlib.sha3_256(password)
+        return result.digest()
+
+    def encryptAES(self, passwordHash, privateKey):
+        self.iv = get_random_bytes(AES.block_size)
+        cipher = AES.new(passwordHash, AES.MODE_CBC, self.iv)
+        return b64encode(cipher.encrypt(pad(privateKey, AES.block_size)))
+
+    def decryptAES(self, passwordHash, privateKey):
+        cipher = AES.new(passwordHash, AES.MODE_CBC, self.iv)
+        privateKey = b64decode(privateKey)
+        return unpad(cipher.decrypt(privateKey), AES.block_size)
+
+    def saveKeysToFile(self, encryptedPrivateKey, publicKey):
+        with open(PRIVATE_KEY_PATH, "w") as privateFile:
+            privateFile.write(encryptedPrivateKey.decode())
+
+        with open(PUBLIC_KEY_PATH, "w") as publicFile:
+            publicFile.write(publicKey.decode())
+
+    def generateKeys(self):
+        privateKey = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=4096
+        )
+
+        formattedPrivateKey = privateKey.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        passwordHash = self.generateHash(self.privateKeyPassword)
+        encryptedPrivateKey = self.encryptAES(passwordHash, formattedPrivateKey)
+
+        publicKey = privateKey.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+        # print(formattedPrivateKey)
+        # print(self.decryptAES(passwordHash, self.encryptAES(passwordHash, formattedPrivateKey)))
+
+        self.saveKeysToFile(encryptedPrivateKey, publicKey)
+
+    def destroyKeys(self):
+        try:
+            os.remove(self.privateKeyPath)
+        except OSError as e:
+            print("Error: %s - %s." % (e.filename, e.strerror))
+
+        try:
+            os.remove(self.publicKeyPath)
+        except OSError as e:
+            print("Error: %s - %s." % (e.filename, e.strerror))
 
 
 class Server:
@@ -22,13 +99,15 @@ class Server:
     clientIp = None
     ip = None
     logger = None
+    encryptor = None
 
-    def __init__(self, serverIp, logger):
+    def __init__(self, serverIp, logger, encryptor):
         self.ip = serverIp
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logger = logger
+        self.encryptor = encryptor
 
-    def __del__(self):
+    def shutDown(self):
         if self.clientSocket is not None:
             self.clientSocket.close()
         if self.serverSocket is not None:
@@ -50,9 +129,9 @@ class Server:
     def listen(self):
         while True:
             print("SERVER: " + str(threading.current_thread().getName()))
+            serverSocketName = self.serverSocket.getsockname()
             try:
                 #print(str(self.serverSocket))
-                serverSocketName = self.serverSocket.getsockname()
                 (self.clientSocket, clientIpPort) = self.serverSocket.accept()
                 self.clientIp = clientIpPort[0]
                 self.logger.log("Establieshed connection with client: " + str(self.clientIp))
@@ -69,7 +148,8 @@ class Server:
                 (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
                 message = self.clientSocket.recv(MSG_LENGTH).decode()
                 if len(message) > 0:
-                    self.logger.log("Received Message: " + message)
+                    self.logger.log(message)
+                    self.clientSocket.send(ACK_MESSAGE.encode())
                 elif len(message) == 0:
                     self.logger.log("Client " + self.clientIp + " has been disconnected!")
                     break
@@ -85,13 +165,15 @@ class Client:
     ip = None
     serverIp = None
     logger = None
+    encryptor = None
 
-    def __init__(self, clientIp, logger):
+    def __init__(self, clientIp, logger, encryptor):
         self.ip = clientIp
         self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logger = logger
+        self.encryptor = encryptor
 
-    def __del__(self):
+    def shutDown(self):
         if self.clientSocket is not None:
             self.clientSocket.close()
         self.logger.log("Shutting down client " + self.ip)
@@ -110,6 +192,8 @@ class Client:
         # print(message)
         try:
             self.clientSocket.send(message.encode())
+            ackMessage = self.clientSocket.recv(MSG_LENGTH).decode()
+            self.logger.log(ackMessage)
         except socket.error:
             if self.serverIp is not None:
                 self.logger.log("Server " + self.serverIp + " has been disconnected!")
@@ -125,11 +209,13 @@ class GUI(customtkinter.CTk):
     WIDTH = 950
     HEIGHT = 600
     message = None
-    __server: Server = None
-    __client: Client = None
+    encryptor = None
+    server: Server = None
+    client: Client = None
 
-    def __init__(self):
+    def __init__(self, encryptor):
         super(GUI, self).__init__()
+        self.encryptor = encryptor
 
         # GUI SETTINGS
         customtkinter.set_appearance_mode("System")
@@ -187,42 +273,42 @@ class GUI(customtkinter.CTk):
         self.sendButton.place(y=500, x=600)
 
     def getServer(self):
-        return self.__server
+        return self.server
 
     def getClient(self):
-        return self.__client
+        return self.client
 
     def setServer(self, server):
-        self.__server = server
+        self.server = server
 
     def setClient(self, client):
-        self.__client = client
+        self.client = client
 
     def serverButtonEvent(self):
         if self.serverButton.fg_color != self.serverButton.hover_color:
             # TURN ON SERVER
             self.serverButton.config(fg_color=self.serverButton.hover_color)
-            succeed = setUpServer(self)
+            succeed = self.setUpServer()
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.serverButton.config(fg_color=self.sendButton.fg_color)
-        elif self.serverButton.fg_color == self.serverButton.hover_color:
+        else:
             # TURN OFF SERVER
             self.serverButton.config(fg_color=self.sendButton.fg_color)
-            self.__server.__del__()
+            self.server.shutDown()
 
     def clientButtonEvent(self):
         if self.clientButton.fg_color != self.clientButton.hover_color:
             # TURN ON CLIENT
             self.clientButton.config(fg_color=self.clientButton.hover_color)
-            succeed = setUpClient(self)
+            succeed = self.setUpClient()
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.clientButton.config(fg_color=self.sendButton.fg_color)
-        elif self.clientButton.fg_color == self.clientButton.hover_color:
+        else:
             # TURN OFF CLIENT
             self.clientButton.config(fg_color=self.sendButton.fg_color)
-            self.__client.__del__()
+            self.client.shutDown()
 
     def key_press(self, event):
         self.handleSending()
@@ -232,9 +318,9 @@ class GUI(customtkinter.CTk):
         self.messageInput.delete(0, "end")
         self.messageInput.clear_placeholder()
         try:
-            self.__client.detectMessage(message)
+            self.client.detectMessage(message)
         except AttributeError:
-            self.messageBox.config(text=self.messageBox.cget("text") + "You are not allowed to send a message. Connect to the server!" + "\n")
+            self.messageBox.config(text=f'{self.messageBox.cget("text")} You are not allowed to send a message. Connect to the server!\n')
 
     def switchMode(self):
         if self.modeSwitch.get() == 1:
@@ -242,19 +328,34 @@ class GUI(customtkinter.CTk):
         else:
             customtkinter.set_appearance_mode("dark")
 
+    def setUpServer(self):
+        logger = Logger(self)
+        self.server = Server(HOST_IP, logger, self.encryptor)
+        succeed = self.server.run()
+        if succeed is True:
+            return True
+        else:
+            return False
+
+    def setUpClient(self):
+        logger = Logger(self)
+        self.client = Client(HOST_IP, logger, self.encryptor)
+        succeed = self.client.connect(RECIPIENT_IP)
+        if succeed is True:
+            return True
+        else:
+            return False
+
     def run(self):
         print("GUI: " + str(threading.current_thread().getName()))
         self.mainloop()
 
     def shutDown(self):
-        if self.__client is not None:
-            if self.__client.clientSocket is not None:
-                self.__client.clientSocket.close()
-        if self.__server is not None:
-            if self.__server.clientSocket is not None:
-                self.__server.clientSocket.close()
-            if self.__server.serverSocket is not None:
-                self.__server.serverSocket.close()
+        if self.client is not None:
+            self.client.shutDown()
+        if self.server is not None:
+            self.server.shutDown()
+        self.encryptor.destroyKeys()
         sys.exit(0)
 
 
@@ -268,30 +369,10 @@ class Logger:
         self.gui.messageBox.config(text=self.gui.messageBox.cget("text") + text + "\n")
 
 
-def setUpServer(gui):
-    logger = Logger(gui)
-    server = Server(HOST_IP, logger)
-    gui.setServer(server)
-    succeed = server.run()
-    if succeed is True:
-        return True
-    else:
-        return False
-
-
-def setUpClient(gui):
-    logger = Logger(gui)
-    client = Client(HOST_IP, logger)
-    gui.setClient(client)
-    succeed = client.connect(RECIPIENT_IP)
-    if succeed is True:
-        return True
-    else:
-        return False
-
-
 def main():
-    gui = GUI()
+    encryptor = Encryptor()
+    encryptor.generateKeys(PRIVATE_KEY_PATH, PUBLIC_KEY_PATH)
+    gui = GUI(encryptor)
     gui.run()
 
 

@@ -9,10 +9,11 @@ import select
 
 HOST_IP = '192.168.0.158'
 RECIPIENT_IP = '192.168.0.158'
-SERVER_PORT = 2022
-CLIENT_PORT = 2023
+SERVER_PORT = 2023
+CLIENT_PORT = 2022
 MSG_LENGTH = 1024
 ENCODING = "utf-8"
+ACK_MESSAGE = f"Server {HOST_IP} received a message"
 
 
 class Server:
@@ -69,7 +70,8 @@ class Server:
                 (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
                 message = self.clientSocket.recv(MSG_LENGTH).decode()
                 if len(message) > 0:
-                    self.logger.log("Received Message: " + message)
+                    self.logger.log(message)
+                    self.clientSocket.send(ACK_MESSAGE.encode())
                 elif len(message) == 0:
                     self.logger.log("Client " + self.clientIp + " has been disconnected!")
                     break
@@ -110,6 +112,8 @@ class Client:
         # print(message)
         try:
             self.clientSocket.send(message.encode())
+            ackMessage = self.clientSocket.recv(MSG_LENGTH).decode()
+            self.logger.log(ackMessage)
         except socket.error:
             if self.serverIp is not None:
                 self.logger.log("Server " + self.serverIp + " has been disconnected!")
