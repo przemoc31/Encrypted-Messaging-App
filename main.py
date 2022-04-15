@@ -82,12 +82,12 @@ class Encryptor:
 
     def destroyKeys(self):
         try:
-            os.remove(self.privateKeyPath)
+            os.remove(PRIVATE_KEY_PATH)
         except OSError as e:
             print("Error: %s - %s." % (e.filename, e.strerror))
 
         try:
-            os.remove(self.publicKeyPath)
+            os.remove(PUBLIC_KEY_PATH)
         except OSError as e:
             print("Error: %s - %s." % (e.filename, e.strerror))
 
@@ -371,7 +371,7 @@ class Logger:
 
 def main():
     encryptor = Encryptor()
-    encryptor.generateKeys(PRIVATE_KEY_PATH, PUBLIC_KEY_PATH)
+    encryptor.generateKeys()
     gui = GUI(encryptor)
     gui.run()
 
