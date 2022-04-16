@@ -1,9 +1,7 @@
-from operator import ge
 import socket
 import sys
 import threading
 from threading import Thread
-import time
 import tkinter
 import customtkinter
 import select
@@ -61,16 +59,18 @@ class Encryptor:
             key_size=4096
         )
 
-        formattedPrivateKey = privateKey.private_bytes(
+        pemPrivateKey = privateKey.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
 
         passwordHash = self.generateHash(self.privateKeyPassword)
-        encryptedPrivateKey = self.encryptAES(passwordHash, formattedPrivateKey)
+        encryptedPemPrivateKey = self.encryptAES(passwordHash, pemPrivateKey)
 
-        publicKey = privateKey.public_key().public_bytes(
+        publicKey = privateKey.public_key()
+
+        pemPublicKey = publicKey.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
@@ -78,7 +78,17 @@ class Encryptor:
         # print(formattedPrivateKey)
         # print(self.decryptAES(passwordHash, self.encryptAES(passwordHash, formattedPrivateKey)))
 
-        self.saveKeysToFile(encryptedPrivateKey, publicKey)
+        self.saveKeysToFile(encryptedPemPrivateKey, pemPublicKey)
+
+        '''with open(PRIVATE_KEY_PATH, "rb") as key_file:
+            privateKey2 = serialization.load_pem_private_key(
+            self.decryptAES(passwordHash, key_file.read()),
+            password=None
+            )
+        
+        msg = publicKey.encrypt("JD DISA".encode(), padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+        original_message = privateKey2.decrypt(msg, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+        print(original_message.decode())'''
 
     def destroyKeys(self):
         try:
