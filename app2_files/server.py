@@ -2,7 +2,7 @@ import select
 import socket
 import threading
 from threading import Thread
-from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey
+from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateKey
 from cryptography.hazmat.primitives import serialization
 from globals import SERVER_PORT, MSG_LENGTH, ACK_MESSAGE
 
@@ -15,7 +15,7 @@ class Server:
     ip = None
     logger = None
     encryptor = None
-    privateKey: _RSAPublicKey = None
+    privateKey: _RSAPrivateKey = None
     publicKey: _RSAPublicKey = None
     clientPublicKey = None
     sessionKey = None

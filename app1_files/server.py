@@ -2,8 +2,10 @@ import select
 import socket
 import threading
 from threading import Thread
-from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateKey
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from encryptor import Encryptor
 from globals import SERVER_PORT, MSG_LENGTH, ACK_MESSAGE
 
 
@@ -14,8 +16,8 @@ class Server:
     clientIp = None
     ip = None
     logger = None
-    encryptor = None
-    privateKey: _RSAPublicKey = None
+    encryptor: Encryptor = None
+    privateKey: _RSAPrivateKey = None
     publicKey: _RSAPublicKey = None
     clientPublicKey = None
     sessionKey = None
@@ -90,6 +92,16 @@ class Server:
         self.clientSocket.send(pemPublicKey)
         pemClientPublicKey = self.clientSocket.recv(MSG_LENGTH)
         self.clientPublicKey = serialization.load_pem_public_key(pemClientPublicKey)
-        self.clientSocket.send(self.sessionKey)
+
+        encryptedSessionKey = self.clientPublicKey.encrypt(
+            self.sessionKey,
+            padding.OAEP(
+                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                 algorithm=hashes.SHA256(),
+                 label=None
+            )
+        )
+        self.clientSocket.send(encryptedSessionKey)
         print(f'Client public key: {self.clientPublicKey}')
         print(f'Session key: {self.sessionKey}')
+        print(f'Encrypted session key: {encryptedSessionKey}')

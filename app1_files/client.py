@@ -1,5 +1,5 @@
 import socket
-from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey
+from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateKey
 from cryptography.hazmat.primitives import serialization
 from globals import CLIENT_PORT, MSG_LENGTH
 
@@ -10,7 +10,7 @@ class Client:
     serverIp = None
     logger = None
     encryptor = None
-    privateKey: _RSAPublicKey = None
+    privateKey: _RSAPrivateKey = None
     publicKey: _RSAPublicKey = None
     serverPublicKey = None
     sessionKey = None
