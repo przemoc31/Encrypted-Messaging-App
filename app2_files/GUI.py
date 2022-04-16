@@ -5,19 +5,20 @@ import customtkinter
 from logger import Logger
 from server import Server
 from client import Client
-HOST_IP = '192.168.0.158'
-RECIPIENT_IP = '192.168.0.158'
+from globals import HOST_IP, RECIPIENT_IP
 
 
 class GUI(customtkinter.CTk):
     WIDTH = 950
     HEIGHT = 600
     message = None
-    __server: Server = None
-    __client: Client = None
+    encryptor = None
+    server: Server = None
+    client: Client = None
 
-    def __init__(self):
+    def __init__(self, encryptor):
         super(GUI, self).__init__()
+        self.encryptor = encryptor
 
         # GUI SETTINGS
         customtkinter.set_appearance_mode("System")
@@ -75,16 +76,16 @@ class GUI(customtkinter.CTk):
         self.sendButton.place(y=500, x=600)
 
     def getServer(self):
-        return self.__server
+        return self.server
 
     def getClient(self):
-        return self.__client
+        return self.client
 
     def setServer(self, server):
-        self.__server = server
+        self.server = server
 
     def setClient(self, client):
-        self.__client = client
+        self.client = client
 
     def serverButtonEvent(self):
         if self.serverButton.fg_color != self.serverButton.hover_color:
@@ -94,10 +95,10 @@ class GUI(customtkinter.CTk):
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.serverButton.config(fg_color=self.sendButton.fg_color)
-        elif self.serverButton.fg_color == self.serverButton.hover_color:
+        else:
             # TURN OFF SERVER
             self.serverButton.config(fg_color=self.sendButton.fg_color)
-            self.__server.__del__()
+            self.server.shutDown()
 
     def clientButtonEvent(self):
         if self.clientButton.fg_color != self.clientButton.hover_color:
@@ -107,10 +108,10 @@ class GUI(customtkinter.CTk):
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.clientButton.config(fg_color=self.sendButton.fg_color)
-        elif self.clientButton.fg_color == self.clientButton.hover_color:
+        else:
             # TURN OFF CLIENT
             self.clientButton.config(fg_color=self.sendButton.fg_color)
-            self.__client.__del__()
+            self.client.shutDown()
 
     def key_press(self, event):
         self.handleSending()
@@ -120,10 +121,10 @@ class GUI(customtkinter.CTk):
         self.messageInput.delete(0, "end")
         self.messageInput.clear_placeholder()
         try:
-            self.__client.detectMessage(message)
+            self.client.detectMessage(message)
         except AttributeError:
-            self.messageBox.config(text=self.messageBox.cget(
-                "text") + "You are not allowed to send a message. Connect to the server!" + "\n")
+            self.messageBox.config(
+                text=f'{self.messageBox.cget("text")} You are not allowed to send a message. Connect to the server!\n')
 
     def switchMode(self):
         if self.modeSwitch.get() == 1:
@@ -131,24 +132,9 @@ class GUI(customtkinter.CTk):
         else:
             customtkinter.set_appearance_mode("dark")
 
-    def run(self):
-        print("GUI: " + str(threading.current_thread().getName()))
-        self.mainloop()
-
-    def shutDown(self):
-        if self.__client is not None:
-            if self.__client.clientSocket is not None:
-                self.__client.clientSocket.close()
-        if self.__server is not None:
-            if self.__server.clientSocket is not None:
-                self.__server.clientSocket.close()
-            if self.__server.serverSocket is not None:
-                self.__server.serverSocket.close()
-        sys.exit(0)
-
     def setUpServer(self):
         logger = Logger(self)
-        self.server = Server(HOST_IP, logger)
+        self.server = Server(HOST_IP, logger, self.encryptor)
         succeed = self.server.run()
         if succeed is True:
             return True
@@ -157,9 +143,21 @@ class GUI(customtkinter.CTk):
 
     def setUpClient(self):
         logger = Logger(self)
-        self.client = Client(HOST_IP, logger)
+        self.client = Client(HOST_IP, logger, self.encryptor)
         succeed = self.client.connect(RECIPIENT_IP)
         if succeed is True:
             return True
         else:
             return False
+
+    def run(self):
+        print("GUI: " + str(threading.current_thread().getName()))
+        self.mainloop()
+
+    def shutDown(self):
+        if self.client is not None:
+            self.client.shutDown()
+        if self.server is not None:
+            self.server.shutDown()
+        self.encryptor.destroyKeys()
+        sys.exit(0)

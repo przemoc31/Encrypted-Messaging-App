@@ -1,0 +1,14 @@
+CLIENT_PORT = 2023
+SERVER_PORT = 2022
+
+MSG_LENGTH = 1024
+
+PRIVATE_KEY_PATH = "private_key.pem"
+PUBLIC_KEY_PATH = "public_key.pem"
+
+HOST_IP = '192.168.42.37'
+RECIPIENT_IP = '192.168.42.37'
+
+ACK_MESSAGE = f"Server {HOST_IP} received a message"
+
+SESSION_KEY_LENGTH = 32

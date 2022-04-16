@@ -1,8 +1,11 @@
+from encryptor import Encryptor
 from GUI import GUI
 
 
 def main():
-    gui = GUI()
+    encryptor = Encryptor()
+    encryptor.generateKeys()
+    gui = GUI(encryptor)
     gui.run()
 
 

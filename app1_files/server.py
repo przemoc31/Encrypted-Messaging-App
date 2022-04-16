@@ -2,11 +2,9 @@ import select
 import socket
 import threading
 from threading import Thread
-
-SERVER_PORT = 2022
-HOST_IP = '192.168.0.158'
-MSG_LENGTH = 1024
-ACK_MESSAGE = f"Server {HOST_IP} received a message"
+from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey
+from cryptography.hazmat.primitives import serialization
+from globals import SERVER_PORT, MSG_LENGTH, ACK_MESSAGE
 
 
 class Server:
@@ -17,6 +15,10 @@ class Server:
     ip = None
     logger = None
     encryptor = None
+    privateKey: _RSAPublicKey = None
+    publicKey: _RSAPublicKey = None
+    clientPublicKey = None
+    sessionKey = None
 
     def __init__(self, serverIp, logger, encryptor):
         self.ip = serverIp
@@ -48,9 +50,10 @@ class Server:
             print("SERVER: " + str(threading.current_thread().getName()))
             serverSocketName = self.serverSocket.getsockname()
             try:
-                #print(str(self.serverSocket))
+                # print(str(self.serverSocket))
                 (self.clientSocket, clientIpPort) = self.serverSocket.accept()
                 self.clientIp = clientIpPort[0]
+                self.keyExchange()
                 self.logger.log("Establieshed connection with client: " + str(self.clientIp))
                 receiverThread = threading.Thread(target=self.receiveMessage, name="Server Receiver", daemon=True)
                 receiverThread.start()
@@ -75,3 +78,18 @@ class Server:
                 self.logger.log("Client " + self.clientIp + " has been disconnected!")
                 self.clientSocket.close()
                 break
+
+    def keyExchange(self):
+        self.privateKey, self.publicKey = self.encryptor.readKeysFromFile()
+        self.sessionKey = self.encryptor.generateSessionKey()
+        # Send public key to client, receive client's public key and send encrypted session key to client
+        pemPublicKey = self.publicKey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        self.clientSocket.send(pemPublicKey)
+        pemClientPublicKey = self.clientSocket.recv(MSG_LENGTH)
+        self.clientPublicKey = serialization.load_pem_public_key(pemClientPublicKey)
+        self.clientSocket.send(self.sessionKey)
+        print(f'Client public key: {self.clientPublicKey}')
+        print(f'Session key: {self.sessionKey}')

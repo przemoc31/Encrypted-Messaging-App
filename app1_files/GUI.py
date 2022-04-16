@@ -5,8 +5,7 @@ import customtkinter
 from server import Server
 from client import Client
 from logger import Logger
-HOST_IP = '192.168.0.158'
-RECIPIENT_IP = '192.168.0.158'
+from globals import HOST_IP, RECIPIENT_IP
 
 
 class GUI(customtkinter.CTk):
@@ -124,7 +123,8 @@ class GUI(customtkinter.CTk):
         try:
             self.client.detectMessage(message)
         except AttributeError:
-            self.messageBox.config(text=f'{self.messageBox.cget("text")} You are not allowed to send a message. Connect to the server!\n')
+            self.messageBox.config(
+                text=f'{self.messageBox.cget("text")} You are not allowed to send a message. Connect to the server!\n')
 
     def switchMode(self):
         if self.modeSwitch.get() == 1:
