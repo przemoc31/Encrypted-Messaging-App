@@ -1,0 +1,106 @@
+import hashlib
+import os
+import secrets
+from base64 import b64encode, b64decode
+
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad, unpad
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from globals import PRIVATE_KEY_PATH, PUBLIC_KEY_PATH, SESSION_KEY_LENGTH
+
+
+class Encryptor:
+    privateKeyPassword = None
+    privateKeyPasswordHash = None
+    iv = None
+
+    def __init__(self):
+        self.privateKeyPassword = b"JD"
+
+    def generateHash(self, password):
+        result = hashlib.sha3_256(password)
+        print(result.digest())
+        return result.digest()
+
+    def encryptAES(self, passwordHash, privateKey):
+        self.iv = get_random_bytes(AES.block_size)
+        cipher = AES.new(passwordHash, AES.MODE_CBC, self.iv)
+        return b64encode(cipher.encrypt(pad(privateKey, AES.block_size)))
+
+    def decryptAES(self, passwordHash, privateKey):
+        cipher = AES.new(passwordHash, AES.MODE_CBC, self.iv)
+        privateKey = b64decode(privateKey)
+        return unpad(cipher.decrypt(privateKey), AES.block_size)
+
+    def saveKeysToFile(self, encryptedPrivateKey, publicKey):
+        with open(PRIVATE_KEY_PATH, "w") as privateFile:
+            privateFile.write(encryptedPrivateKey.decode())
+
+        with open(PUBLIC_KEY_PATH, "w") as publicFile:
+            publicFile.write(publicKey.decode())
+
+    def readKeysFromFile(self):
+        with open(PRIVATE_KEY_PATH, "rb") as key_file:
+            privateKey = serialization.load_pem_private_key(
+                self.decryptAES(self.privateKeyPasswordHash, key_file.read()),
+                password=None
+            )
+
+        with open(PUBLIC_KEY_PATH, "rb") as publicFile:
+            publicKey = serialization.load_pem_public_key(publicFile.read())
+
+        return privateKey, publicKey
+
+    def generateKeys(self):
+        privateKey = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=4096
+        )
+
+        pemPrivateKey = privateKey.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        self.privateKeyPasswordHash = self.generateHash(self.privateKeyPassword)
+        encryptedPemPrivateKey = self.encryptAES(self.privateKeyPasswordHash, pemPrivateKey)
+
+        publicKey = privateKey.public_key()
+
+        pemPublicKey = publicKey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+        # print(formattedPrivateKey)
+        # print(self.decryptAES(privateKeyPasswordHash, self.encryptAES(privateKeyPasswordHash, formattedPrivateKey)))
+
+        self.saveKeysToFile(encryptedPemPrivateKey, pemPublicKey)
+
+        '''with open(PRIVATE_KEY_PATH, "rb") as key_file:
+            privateKey2 = serialization.load_pem_private_key(
+            self.decryptAES(privateKeyPasswordHash, key_file.read()),
+            password=None
+            )
+
+        msg = publicKey.encrypt("JD DISA".encode(), padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+        original_message = privateKey2.decrypt(msg, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+        print(original_message.decode())'''
+
+    def destroyKeys(self):
+        try:
+            os.remove(PRIVATE_KEY_PATH)
+        except OSError as e:
+            print("Error: %s - %s." % (e.filename, e.strerror))
+
+        try:
+            os.remove(PUBLIC_KEY_PATH)
+        except OSError as e:
+            print("Error: %s - %s." % (e.filename, e.strerror))
+
+    def generateSessionKey(self):
+        session_key = secrets.token_bytes(SESSION_KEY_LENGTH)
+        return session_key
