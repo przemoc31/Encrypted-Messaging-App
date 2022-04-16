@@ -1,128 +1,12 @@
-import socket
 import sys
 import threading
-from threading import Thread
-import time
 import tkinter
 import customtkinter
-import select
-
+from logger import Logger
+from server import Server
+from client import Client
 HOST_IP = '192.168.0.158'
 RECIPIENT_IP = '192.168.0.158'
-SERVER_PORT = 2023
-CLIENT_PORT = 2022
-MSG_LENGTH = 1024
-ENCODING = "utf-8"
-ACK_MESSAGE = f"Server {HOST_IP} received a message"
-
-
-class Server:
-    gui = None
-    serverSocket = None
-    clientSocket = None
-    clientIp = None
-    ip = None
-    logger = None
-
-    def __init__(self, serverIp, logger):
-        self.ip = serverIp
-        self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.logger = logger
-
-    def __del__(self):
-        if self.clientSocket is not None:
-            self.clientSocket.close()
-        if self.serverSocket is not None:
-            self.serverSocket.close()
-        self.logger.log("Shutting down server " + self.ip)
-
-    def run(self):
-        try:
-            self.serverSocket.bind((self.ip, SERVER_PORT))
-            self.serverSocket.listen(1)
-            self.logger.log("Start listening...")
-            # print("SERVER: " + str(threading.current_thread().getName()))
-            listenerThread = Thread(target=self.listen, name="Server Listener", daemon=True)
-            listenerThread.start()
-            return True
-        except:
-            return False
-
-    def listen(self):
-        while True:
-            print("SERVER: " + str(threading.current_thread().getName()))
-            try:
-                #print(str(self.serverSocket))
-                serverSocketName = self.serverSocket.getsockname()
-                (self.clientSocket, clientIpPort) = self.serverSocket.accept()
-                self.clientIp = clientIpPort[0]
-                self.logger.log("Establieshed connection with client: " + str(self.clientIp))
-                receiverThread = threading.Thread(target=self.receiveMessage, name="Server Receiver", daemon=True)
-                receiverThread.start()
-            except socket.error:
-                self.logger.log("Server Socket: " + str(serverSocketName) + " has been closed")
-                break
-
-    def receiveMessage(self):
-        while True:
-            # print("SERVER: " + str(threading.current_thread().getName()))
-            try:
-                (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
-                message = self.clientSocket.recv(MSG_LENGTH).decode()
-                if len(message) > 0:
-                    self.logger.log(message)
-                    self.clientSocket.send(ACK_MESSAGE.encode())
-                elif len(message) == 0:
-                    self.logger.log("Client " + self.clientIp + " has been disconnected!")
-                    break
-
-            except select.error:
-                self.logger.log("Client " + self.clientIp + " has been disconnected!")
-                self.clientSocket.close()
-                break
-
-
-class Client:
-    clientSocket = None
-    ip = None
-    serverIp = None
-    logger = None
-
-    def __init__(self, clientIp, logger):
-        self.ip = clientIp
-        self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.logger = logger
-
-    def __del__(self):
-        if self.clientSocket is not None:
-            self.clientSocket.close()
-        self.logger.log("Shutting down client " + self.ip)
-
-    def connect(self, serverIp):
-        try:
-            self.clientSocket.connect((serverIp, CLIENT_PORT))
-            self.serverIp = serverIp
-            self.logger.log("Establieshed connection with server: " + serverIp)
-            return True
-        except socket.error as errorMsg:
-            self.logger.log("Couldn't connect to server: " + serverIp)
-            return False
-
-    def sendMessage(self, message):
-        # print(message)
-        try:
-            self.clientSocket.send(message.encode())
-            ackMessage = self.clientSocket.recv(MSG_LENGTH).decode()
-            self.logger.log(ackMessage)
-        except socket.error:
-            if self.serverIp is not None:
-                self.logger.log("Server " + self.serverIp + " has been disconnected!")
-            else:
-                self.logger.log("You are not allowed to send a message. Connect to the server!")
-
-    def detectMessage(self, message):
-        if message is not None:
-            self.sendMessage(message)
 
 
 class GUI(customtkinter.CTk):
@@ -206,7 +90,7 @@ class GUI(customtkinter.CTk):
         if self.serverButton.fg_color != self.serverButton.hover_color:
             # TURN ON SERVER
             self.serverButton.config(fg_color=self.serverButton.hover_color)
-            succeed = setUpServer(self)
+            succeed = self.setUpServer()
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.serverButton.config(fg_color=self.sendButton.fg_color)
@@ -219,7 +103,7 @@ class GUI(customtkinter.CTk):
         if self.clientButton.fg_color != self.clientButton.hover_color:
             # TURN ON CLIENT
             self.clientButton.config(fg_color=self.clientButton.hover_color)
-            succeed = setUpClient(self)
+            succeed = self.setUpClient()
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.clientButton.config(fg_color=self.sendButton.fg_color)
@@ -238,7 +122,8 @@ class GUI(customtkinter.CTk):
         try:
             self.__client.detectMessage(message)
         except AttributeError:
-            self.messageBox.config(text=self.messageBox.cget("text") + "You are not allowed to send a message. Connect to the server!" + "\n")
+            self.messageBox.config(text=self.messageBox.cget(
+                "text") + "You are not allowed to send a message. Connect to the server!" + "\n")
 
     def switchMode(self):
         if self.modeSwitch.get() == 1:
@@ -261,43 +146,20 @@ class GUI(customtkinter.CTk):
                 self.__server.serverSocket.close()
         sys.exit(0)
 
+    def setUpServer(self):
+        logger = Logger(self)
+        self.server = Server(HOST_IP, logger)
+        succeed = self.server.run()
+        if succeed is True:
+            return True
+        else:
+            return False
 
-class Logger:
-    gui = None
-
-    def __init__(self, gui):
-        self.gui = gui
-
-    def log(self, text):
-        self.gui.messageBox.config(text=self.gui.messageBox.cget("text") + text + "\n")
-
-
-def setUpServer(gui):
-    logger = Logger(gui)
-    server = Server(HOST_IP, logger)
-    gui.setServer(server)
-    succeed = server.run()
-    if succeed is True:
-        return True
-    else:
-        return False
-
-
-def setUpClient(gui):
-    logger = Logger(gui)
-    client = Client(HOST_IP, logger)
-    gui.setClient(client)
-    succeed = client.connect(RECIPIENT_IP)
-    if succeed is True:
-        return True
-    else:
-        return False
-
-
-def main():
-    gui = GUI()
-    gui.run()
-
-
-if __name__ == '__main__':
-    main()
+    def setUpClient(self):
+        logger = Logger(self)
+        self.client = Client(HOST_IP, logger)
+        succeed = self.client.connect(RECIPIENT_IP)
+        if succeed is True:
+            return True
+        else:
+            return False
