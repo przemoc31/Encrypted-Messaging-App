@@ -3,8 +3,12 @@ import sys
 import threading
 from threading import Thread
 import tkinter
+
+import secrets
 import customtkinter
 import select
+
+from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 import os
@@ -17,16 +21,19 @@ from Crypto.Util.Padding import pad, unpad
 
 HOST_IP = '192.168.0.158'
 RECIPIENT_IP = '192.168.0.158'
-SERVER_PORT = 2022
-CLIENT_PORT = 2023
+SERVER_PORT = 2023
+CLIENT_PORT = 2022
 MSG_LENGTH = 1024
 ENCODING = "utf-8"
 ACK_MESSAGE = f"Server {HOST_IP} received a message"
 PRIVATE_KEY_PATH = "private_key.pem"
 PUBLIC_KEY_PATH = "public_key.pem"
+SESSION_KEY_LENGTH = 32
+
 
 class Encryptor:
     privateKeyPassword = None
+    privateKeyPasswordHash = None
     iv = None
 
     def __init__(self):
@@ -34,6 +41,7 @@ class Encryptor:
 
     def generateHash(self, password):
         result = hashlib.sha3_256(password)
+        print(result.digest())
         return result.digest()
 
     def encryptAES(self, passwordHash, privateKey):
@@ -53,6 +61,18 @@ class Encryptor:
         with open(PUBLIC_KEY_PATH, "w") as publicFile:
             publicFile.write(publicKey.decode())
 
+    def readKeysFromFile(self):
+        with open(PRIVATE_KEY_PATH, "rb") as key_file:
+            privateKey = serialization.load_pem_private_key(
+                self.decryptAES(self.privateKeyPasswordHash, key_file.read()),
+                password=None
+            )
+
+        with open(PUBLIC_KEY_PATH, "rb") as publicFile:
+            publicKey = serialization.load_pem_public_key(publicFile.read())
+
+        return privateKey, publicKey
+
     def generateKeys(self):
         privateKey = rsa.generate_private_key(
             public_exponent=65537,
@@ -65,8 +85,8 @@ class Encryptor:
             encryption_algorithm=serialization.NoEncryption()
         )
 
-        passwordHash = self.generateHash(self.privateKeyPassword)
-        encryptedPemPrivateKey = self.encryptAES(passwordHash, pemPrivateKey)
+        self.privateKeyPasswordHash = self.generateHash(self.privateKeyPassword)
+        encryptedPemPrivateKey = self.encryptAES(self.privateKeyPasswordHash, pemPrivateKey)
 
         publicKey = privateKey.public_key()
 
@@ -76,16 +96,16 @@ class Encryptor:
         )
 
         # print(formattedPrivateKey)
-        # print(self.decryptAES(passwordHash, self.encryptAES(passwordHash, formattedPrivateKey)))
+        # print(self.decryptAES(privateKeyPasswordHash, self.encryptAES(privateKeyPasswordHash, formattedPrivateKey)))
 
         self.saveKeysToFile(encryptedPemPrivateKey, pemPublicKey)
 
         '''with open(PRIVATE_KEY_PATH, "rb") as key_file:
             privateKey2 = serialization.load_pem_private_key(
-            self.decryptAES(passwordHash, key_file.read()),
+            self.decryptAES(privateKeyPasswordHash, key_file.read()),
             password=None
             )
-        
+
         msg = publicKey.encrypt("JD DISA".encode(), padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
         original_message = privateKey2.decrypt(msg, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
         print(original_message.decode())'''
@@ -101,6 +121,10 @@ class Encryptor:
         except OSError as e:
             print("Error: %s - %s." % (e.filename, e.strerror))
 
+    def generateSessionKey(self):
+        session_key = secrets.token_bytes(SESSION_KEY_LENGTH)
+        return session_key
+
 
 class Server:
     gui = None
@@ -110,6 +134,10 @@ class Server:
     ip = None
     logger = None
     encryptor = None
+    privateKey: _RSAPublicKey = None
+    publicKey: _RSAPublicKey = None
+    clientPublicKey = None
+    sessionKey = None
 
     def __init__(self, serverIp, logger, encryptor):
         self.ip = serverIp
@@ -141,9 +169,10 @@ class Server:
             print("SERVER: " + str(threading.current_thread().getName()))
             serverSocketName = self.serverSocket.getsockname()
             try:
-                #print(str(self.serverSocket))
+                # print(str(self.serverSocket))
                 (self.clientSocket, clientIpPort) = self.serverSocket.accept()
                 self.clientIp = clientIpPort[0]
+                self.keyExchange()
                 self.logger.log("Establieshed connection with client: " + str(self.clientIp))
                 receiverThread = threading.Thread(target=self.receiveMessage, name="Server Receiver", daemon=True)
                 receiverThread.start()
@@ -169,6 +198,21 @@ class Server:
                 self.clientSocket.close()
                 break
 
+    def keyExchange(self):
+        self.privateKey, self.publicKey = self.encryptor.readKeysFromFile()
+        self.sessionKey = self.encryptor.generateSessionKey()
+        # Send public key to client, receive client's public key and send encrypted session key to client
+        pemPublicKey = self.publicKey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        self.clientSocket.send(pemPublicKey)
+        pemClientPublicKey = self.clientSocket.recv(MSG_LENGTH)
+        self.clientPublicKey = serialization.load_pem_public_key(pemClientPublicKey)
+        self.clientSocket.send(self.sessionKey)
+        print(f'Client public key: {self.clientPublicKey}')
+        print(f'Session key: {self.sessionKey}')
+
 
 class Client:
     clientSocket = None
@@ -176,6 +220,10 @@ class Client:
     serverIp = None
     logger = None
     encryptor = None
+    privateKey: _RSAPublicKey = None
+    publicKey: _RSAPublicKey = None
+    serverPublicKey = None
+    sessionKey = None
 
     def __init__(self, clientIp, logger, encryptor):
         self.ip = clientIp
@@ -192,9 +240,10 @@ class Client:
         try:
             self.clientSocket.connect((serverIp, CLIENT_PORT))
             self.serverIp = serverIp
+            self.keyExchange()
             self.logger.log("Establieshed connection with server: " + serverIp)
             return True
-        except socket.error as errorMsg:
+        except socket.error:
             self.logger.log("Couldn't connect to server: " + serverIp)
             return False
 
@@ -213,6 +262,20 @@ class Client:
     def detectMessage(self, message):
         if message is not None:
             self.sendMessage(message)
+
+    def keyExchange(self):
+        # Send public key to server and receive server's public key and encrypted session key
+        self.privateKey, self.publicKey = self.encryptor.readKeysFromFile()
+        pemPublicKey = self.publicKey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        self.clientSocket.send(pemPublicKey)
+        pemServerPublicKey = self.clientSocket.recv(MSG_LENGTH)
+        self.serverPublicKey = serialization.load_pem_public_key(pemServerPublicKey)
+        self.sessionKey = self.clientSocket.recv(MSG_LENGTH)
+        print(f'Server public key: {self.serverPublicKey}')
+        print(f'Session key: {self.sessionKey}')
 
 
 class GUI(customtkinter.CTk):
@@ -330,7 +393,8 @@ class GUI(customtkinter.CTk):
         try:
             self.client.detectMessage(message)
         except AttributeError:
-            self.messageBox.config(text=f'{self.messageBox.cget("text")} You are not allowed to send a message. Connect to the server!\n')
+            self.messageBox.config(
+                text=f'{self.messageBox.cget("text")} You are not allowed to send a message. Connect to the server!\n')
 
     def switchMode(self):
         if self.modeSwitch.get() == 1:

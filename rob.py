@@ -2,18 +2,128 @@ import socket
 import sys
 import threading
 from threading import Thread
-import time
 import tkinter
+
+import secrets
 import customtkinter
 import select
 
+from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+import os
+import hashlib
+from base64 import b64decode
+from base64 import b64encode
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad, unpad
+
 HOST_IP = '192.168.0.158'
 RECIPIENT_IP = '192.168.0.158'
-SERVER_PORT = 2023
-CLIENT_PORT = 2022
+SERVER_PORT = 2022
+CLIENT_PORT = 2023
 MSG_LENGTH = 1024
 ENCODING = "utf-8"
 ACK_MESSAGE = f"Server {HOST_IP} received a message"
+PRIVATE_KEY_PATH = "private_key2.pem"
+PUBLIC_KEY_PATH = "public_key2.pem"
+SESSION_KEY_LENGTH = 32
+
+
+class Encryptor:
+    privateKeyPassword = None
+    privateKeyPasswordHash = None
+    iv = None
+
+    def __init__(self):
+        self.privateKeyPassword = b"JD"
+
+    def generateHash(self, password):
+        result = hashlib.sha3_256(password)
+        print(result.digest())
+        return result.digest()
+
+    def encryptAES(self, passwordHash, privateKey):
+        self.iv = get_random_bytes(AES.block_size)
+        cipher = AES.new(passwordHash, AES.MODE_CBC, self.iv)
+        return b64encode(cipher.encrypt(pad(privateKey, AES.block_size)))
+
+    def decryptAES(self, passwordHash, privateKey):
+        cipher = AES.new(passwordHash, AES.MODE_CBC, self.iv)
+        privateKey = b64decode(privateKey)
+        return unpad(cipher.decrypt(privateKey), AES.block_size)
+
+    def saveKeysToFile(self, encryptedPrivateKey, publicKey):
+        with open(PRIVATE_KEY_PATH, "w") as privateFile:
+            privateFile.write(encryptedPrivateKey.decode())
+
+        with open(PUBLIC_KEY_PATH, "w") as publicFile:
+            publicFile.write(publicKey.decode())
+
+    def readKeysFromFile(self):
+        with open(PRIVATE_KEY_PATH, "rb") as key_file:
+            privateKey = serialization.load_pem_private_key(
+                self.decryptAES(self.privateKeyPasswordHash, key_file.read()),
+                password=None
+            )
+
+        with open(PUBLIC_KEY_PATH, "rb") as publicFile:
+            publicKey = serialization.load_pem_public_key(publicFile.read())
+
+        return privateKey, publicKey
+
+    def generateKeys(self):
+        privateKey = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=4096
+        )
+
+        pemPrivateKey = privateKey.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        self.privateKeyPasswordHash = self.generateHash(self.privateKeyPassword)
+        encryptedPemPrivateKey = self.encryptAES(self.privateKeyPasswordHash, pemPrivateKey)
+
+        publicKey = privateKey.public_key()
+
+        pemPublicKey = publicKey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+        # print(formattedPrivateKey)
+        # print(self.decryptAES(privateKeyPasswordHash, self.encryptAES(privateKeyPasswordHash, formattedPrivateKey)))
+
+        self.saveKeysToFile(encryptedPemPrivateKey, pemPublicKey)
+
+        '''with open(PRIVATE_KEY_PATH, "rb") as key_file:
+            privateKey2 = serialization.load_pem_private_key(
+            self.decryptAES(privateKeyPasswordHash, key_file.read()),
+            password=None
+            )
+
+        msg = publicKey.encrypt("JD DISA".encode(), padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+        original_message = privateKey2.decrypt(msg, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+        print(original_message.decode())'''
+
+    def destroyKeys(self):
+        try:
+            os.remove(PRIVATE_KEY_PATH)
+        except OSError as e:
+            print("Error: %s - %s." % (e.filename, e.strerror))
+
+        try:
+            os.remove(PUBLIC_KEY_PATH)
+        except OSError as e:
+            print("Error: %s - %s." % (e.filename, e.strerror))
+
+    def generateSessionKey(self):
+        session_key = secrets.token_bytes(SESSION_KEY_LENGTH)
+        return session_key
 
 
 class Server:
@@ -23,13 +133,19 @@ class Server:
     clientIp = None
     ip = None
     logger = None
+    encryptor = None
+    privateKey: _RSAPublicKey = None
+    publicKey: _RSAPublicKey = None
+    clientPublicKey = None
+    sessionKey = None
 
-    def __init__(self, serverIp, logger):
+    def __init__(self, serverIp, logger, encryptor):
         self.ip = serverIp
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logger = logger
+        self.encryptor = encryptor
 
-    def __del__(self):
+    def shutDown(self):
         if self.clientSocket is not None:
             self.clientSocket.close()
         if self.serverSocket is not None:
@@ -51,11 +167,12 @@ class Server:
     def listen(self):
         while True:
             print("SERVER: " + str(threading.current_thread().getName()))
+            serverSocketName = self.serverSocket.getsockname()
             try:
-                #print(str(self.serverSocket))
-                serverSocketName = self.serverSocket.getsockname()
+                # print(str(self.serverSocket))
                 (self.clientSocket, clientIpPort) = self.serverSocket.accept()
                 self.clientIp = clientIpPort[0]
+                self.keyExchange()
                 self.logger.log("Establieshed connection with client: " + str(self.clientIp))
                 receiverThread = threading.Thread(target=self.receiveMessage, name="Server Receiver", daemon=True)
                 receiverThread.start()
@@ -81,19 +198,40 @@ class Server:
                 self.clientSocket.close()
                 break
 
+    def keyExchange(self):
+        self.privateKey, self.publicKey = self.encryptor.readKeysFromFile()
+        self.sessionKey = self.encryptor.generateSessionKey()
+        # Send public key to client, receive client's public key and send encrypted session key to client
+        pemPublicKey = self.publicKey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        self.clientSocket.send(pemPublicKey)
+        pemClientPublicKey = self.clientSocket.recv(MSG_LENGTH)
+        self.clientPublicKey = serialization.load_pem_public_key(pemClientPublicKey)
+        self.clientSocket.send(self.sessionKey)
+        print(f'Client public key: {self.clientPublicKey}')
+        print(f'Session key: {self.sessionKey}')
+
 
 class Client:
     clientSocket = None
     ip = None
     serverIp = None
     logger = None
+    encryptor = None
+    privateKey: _RSAPublicKey = None
+    publicKey: _RSAPublicKey = None
+    serverPublicKey = None
+    sessionKey = None
 
-    def __init__(self, clientIp, logger):
+    def __init__(self, clientIp, logger, encryptor):
         self.ip = clientIp
         self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logger = logger
+        self.encryptor = encryptor
 
-    def __del__(self):
+    def shutDown(self):
         if self.clientSocket is not None:
             self.clientSocket.close()
         self.logger.log("Shutting down client " + self.ip)
@@ -102,9 +240,10 @@ class Client:
         try:
             self.clientSocket.connect((serverIp, CLIENT_PORT))
             self.serverIp = serverIp
+            self.keyExchange()
             self.logger.log("Establieshed connection with server: " + serverIp)
             return True
-        except socket.error as errorMsg:
+        except socket.error:
             self.logger.log("Couldn't connect to server: " + serverIp)
             return False
 
@@ -124,16 +263,32 @@ class Client:
         if message is not None:
             self.sendMessage(message)
 
+    def keyExchange(self):
+        # Send public key to server and receive server's public key and encrypted session key
+        self.privateKey, self.publicKey = self.encryptor.readKeysFromFile()
+        pemPublicKey = self.publicKey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        self.clientSocket.send(pemPublicKey)
+        pemServerPublicKey = self.clientSocket.recv(MSG_LENGTH)
+        self.serverPublicKey = serialization.load_pem_public_key(pemServerPublicKey)
+        self.sessionKey = self.clientSocket.recv(MSG_LENGTH)
+        print(f'Server public key: {self.serverPublicKey}')
+        print(f'Session key: {self.sessionKey}')
+
 
 class GUI(customtkinter.CTk):
     WIDTH = 950
     HEIGHT = 600
     message = None
-    __server: Server = None
-    __client: Client = None
+    encryptor = None
+    server: Server = None
+    client: Client = None
 
-    def __init__(self):
+    def __init__(self, encryptor):
         super(GUI, self).__init__()
+        self.encryptor = encryptor
 
         # GUI SETTINGS
         customtkinter.set_appearance_mode("System")
@@ -191,42 +346,42 @@ class GUI(customtkinter.CTk):
         self.sendButton.place(y=500, x=600)
 
     def getServer(self):
-        return self.__server
+        return self.server
 
     def getClient(self):
-        return self.__client
+        return self.client
 
     def setServer(self, server):
-        self.__server = server
+        self.server = server
 
     def setClient(self, client):
-        self.__client = client
+        self.client = client
 
     def serverButtonEvent(self):
         if self.serverButton.fg_color != self.serverButton.hover_color:
             # TURN ON SERVER
             self.serverButton.config(fg_color=self.serverButton.hover_color)
-            succeed = setUpServer(self)
+            succeed = self.setUpServer()
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.serverButton.config(fg_color=self.sendButton.fg_color)
-        elif self.serverButton.fg_color == self.serverButton.hover_color:
+        else:
             # TURN OFF SERVER
             self.serverButton.config(fg_color=self.sendButton.fg_color)
-            self.__server.__del__()
+            self.server.shutDown()
 
     def clientButtonEvent(self):
         if self.clientButton.fg_color != self.clientButton.hover_color:
             # TURN ON CLIENT
             self.clientButton.config(fg_color=self.clientButton.hover_color)
-            succeed = setUpClient(self)
+            succeed = self.setUpClient()
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.clientButton.config(fg_color=self.sendButton.fg_color)
-        elif self.clientButton.fg_color == self.clientButton.hover_color:
+        else:
             # TURN OFF CLIENT
             self.clientButton.config(fg_color=self.sendButton.fg_color)
-            self.__client.__del__()
+            self.client.shutDown()
 
     def key_press(self, event):
         self.handleSending()
@@ -236,9 +391,10 @@ class GUI(customtkinter.CTk):
         self.messageInput.delete(0, "end")
         self.messageInput.clear_placeholder()
         try:
-            self.__client.detectMessage(message)
+            self.client.detectMessage(message)
         except AttributeError:
-            self.messageBox.config(text=self.messageBox.cget("text") + "You are not allowed to send a message. Connect to the server!" + "\n")
+            self.messageBox.config(
+                text=f'{self.messageBox.cget("text")} You are not allowed to send a message. Connect to the server!\n')
 
     def switchMode(self):
         if self.modeSwitch.get() == 1:
@@ -246,19 +402,34 @@ class GUI(customtkinter.CTk):
         else:
             customtkinter.set_appearance_mode("dark")
 
+    def setUpServer(self):
+        logger = Logger(self)
+        self.server = Server(HOST_IP, logger, self.encryptor)
+        succeed = self.server.run()
+        if succeed is True:
+            return True
+        else:
+            return False
+
+    def setUpClient(self):
+        logger = Logger(self)
+        self.client = Client(HOST_IP, logger, self.encryptor)
+        succeed = self.client.connect(RECIPIENT_IP)
+        if succeed is True:
+            return True
+        else:
+            return False
+
     def run(self):
         print("GUI: " + str(threading.current_thread().getName()))
         self.mainloop()
 
     def shutDown(self):
-        if self.__client is not None:
-            if self.__client.clientSocket is not None:
-                self.__client.clientSocket.close()
-        if self.__server is not None:
-            if self.__server.clientSocket is not None:
-                self.__server.clientSocket.close()
-            if self.__server.serverSocket is not None:
-                self.__server.serverSocket.close()
+        if self.client is not None:
+            self.client.shutDown()
+        if self.server is not None:
+            self.server.shutDown()
+        self.encryptor.destroyKeys()
         sys.exit(0)
 
 
@@ -272,30 +443,10 @@ class Logger:
         self.gui.messageBox.config(text=self.gui.messageBox.cget("text") + text + "\n")
 
 
-def setUpServer(gui):
-    logger = Logger(gui)
-    server = Server(HOST_IP, logger)
-    gui.setServer(server)
-    succeed = server.run()
-    if succeed is True:
-        return True
-    else:
-        return False
-
-
-def setUpClient(gui):
-    logger = Logger(gui)
-    client = Client(HOST_IP, logger)
-    gui.setClient(client)
-    succeed = client.connect(RECIPIENT_IP)
-    if succeed is True:
-        return True
-    else:
-        return False
-
-
 def main():
-    gui = GUI()
+    encryptor = Encryptor()
+    encryptor.generateKeys()
+    gui = GUI(encryptor)
     gui.run()
 
 
