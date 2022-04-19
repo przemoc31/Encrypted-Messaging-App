@@ -15,24 +15,48 @@ class Encryptor:
     privateKeyPassword = None
     privateKeyPasswordHash = None
     iv = None
+    AES_MODE = None
 
     def __init__(self):
         self.privateKeyPassword = b"JD"
+        self.AES_MODE = AES.MODE_CBC
+
+    def switchEncryptionMode(self, AES_MODE):
+        if AES_MODE == "CBC":
+            self.AES_MODE = AES.MODE_CBC
+        elif AES_MODE == "ECB":
+            self.AES_MODE = AES.MODE_ECB
+        elif AES_MODE == "CFB":
+            self.AES_MODE = AES.MODE_CFB
+        elif AES_MODE == "OFB":
+            self.AES_MODE = AES.MODE_OFB
 
     def generateHash(self, password):
         result = hashlib.sha3_256(password)
-        print(result.digest())
         return result.digest()
 
-    def encryptAES(self, passwordHash, privateKey):
-        self.iv = get_random_bytes(AES.block_size)
-        cipher = AES.new(passwordHash, AES.MODE_CBC, self.iv)
-        return b64encode(cipher.encrypt(pad(privateKey, AES.block_size)))
+    def encryptAES(self, key, data):
+        #self.iv = get_random_bytes(AES.block_size)
+        if self.AES_MODE != AES.MODE_ECB:
+            self.iv = bytes([0xa3, 0x11, 0xaa, 0xc0, 0x0d, 0xee, 0xf1, 0xff, 0x01, 0x03, 0x07, 0x00, 0x25, 0x58, 0x99, 0xc3])
+            cipher = AES.new(key, self.AES_MODE, self.iv)
+            return b64encode(cipher.encrypt(pad(data, AES.block_size)))
+        else:
+            cipher = AES.new(key, self.AES_MODE)
+            return b64encode(cipher.encrypt(pad(data, AES.block_size)))
 
-    def decryptAES(self, passwordHash, privateKey):
-        cipher = AES.new(passwordHash, AES.MODE_CBC, self.iv)
-        privateKey = b64decode(privateKey)
-        return unpad(cipher.decrypt(privateKey), AES.block_size)
+    def decryptAES(self, key, data):
+        if self.AES_MODE != AES.MODE_ECB:
+            cipher = AES.new(key, self.AES_MODE, self.iv)
+        else:
+            cipher = AES.new(key, self.AES_MODE)
+        data = b64decode(data)
+        try:
+            result = unpad(cipher.decrypt(data), AES.block_size)
+        except ValueError:
+            result = bytes()
+
+        return result
 
     def saveKeysToFile(self, encryptedPrivateKey, publicKey):
         with open(PRIVATE_KEY_PATH, "w") as privateFile:
@@ -75,8 +99,7 @@ class Encryptor:
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
 
-        # print(formattedPrivateKey)
-        # print(self.decryptAES(privateKeyPasswordHash, self.encryptAES(privateKeyPasswordHash, formattedPrivateKey)))
+        #print(self.decryptAES(self.privateKeyPasswordHash, self.encryptAES(self.privateKeyPasswordHash, pemPrivateKey)))
 
         self.saveKeysToFile(encryptedPemPrivateKey, pemPublicKey)
 
@@ -102,5 +125,5 @@ class Encryptor:
             print("Error: %s - %s." % (e.filename, e.strerror))
 
     def generateSessionKey(self):
-        session_key = secrets.token_bytes(SESSION_KEY_LENGTH)
-        return session_key
+        sessionKey = secrets.token_bytes(SESSION_KEY_LENGTH)
+        return sessionKey

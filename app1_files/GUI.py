@@ -1,10 +1,9 @@
 import sys
-import threading
 import tkinter
 import customtkinter
+from logger import Logger
 from server import Server
 from client import Client
-from logger import Logger
 from globals import HOST_IP, RECIPIENT_IP
 
 
@@ -15,6 +14,8 @@ class GUI(customtkinter.CTk):
     encryptor = None
     server: Server = None
     client: Client = None
+    encryptionButton: customtkinter.CTkButton = None
+    encryptionButtons = []
 
     def __init__(self, encryptor):
         super(GUI, self).__init__()
@@ -55,9 +56,29 @@ class GUI(customtkinter.CTk):
                                                     fg_color=("gray75", "gray30"), command=self.clientButtonEvent)
         self.clientButton.grid(pady=10, padx=20)
 
+        # CBC BUTTON
+        self.CBCButton = customtkinter.CTkButton(master=self.frame_left, text="CBC",
+                                                    fg_color=("gray75", "gray30"), command=lambda: self.encryptionModeButtonEvent("CBC", self.CBCButton))
+        self.CBCButton.place(x=20, y=200)
+
+        # ECB BUTTON
+        self.ECBButton = customtkinter.CTkButton(master=self.frame_left, text="ECB",
+                                                    fg_color=("gray75", "gray30"), command=lambda: self.encryptionModeButtonEvent("ECB", self.ECBButton))
+        self.ECBButton.place(x=20, y=250)
+
+        # CFB BUTTON
+        self.CFBButton = customtkinter.CTkButton(master=self.frame_left, text="CFB",
+                                                    fg_color=("gray75", "gray30"), command=lambda: self.encryptionModeButtonEvent("CFB", self.CFBButton))
+        self.CFBButton.place(x=20, y=300)
+
+        # OFB BUTTON
+        self.OFBButton = customtkinter.CTkButton(master=self.frame_left, text="OFB",
+                                                    fg_color=("gray75", "gray30"), command=lambda: self.encryptionModeButtonEvent("OFB", self.OFBButton))
+        self.OFBButton.place(x=20, y=350)
+
         # LIGHT MODE SWITCH
         self.modeSwitch = customtkinter.CTkSwitch(master=self.frame_left, text="Light Mode", command=self.switchMode)
-        self.modeSwitch.grid(pady=10, padx=20, sticky="w")
+        self.modeSwitch.place(x=20, y=400)
 
         # MESSAGE BOX
         self.messageBox = tkinter.Label(master=self.frame_right, font=("Helvetica", 12), fg='#fff',
@@ -74,6 +95,9 @@ class GUI(customtkinter.CTk):
         self.sendButton = customtkinter.CTkButton(master=self.frame_right, text="SEND", fg_color=("gray75", "gray30"),
                                                   command=self.handleSending)
         self.sendButton.place(y=500, x=600)
+
+        self.encryptionButtons.extend([self.CBCButton, self.ECBButton, self.CFBButton, self.OFBButton])
+        self.encryptionModeButtonEvent("CBC", self.CBCButton)
 
     def getServer(self):
         return self.server
@@ -113,6 +137,23 @@ class GUI(customtkinter.CTk):
             self.clientButton.config(fg_color=self.sendButton.fg_color)
             self.client.shutDown()
 
+    def encryptionModeButtonEvent(self, AES_MODE, encryptionButton):
+        self.encryptionButton = encryptionButton
+
+        if self.encryptionButton.fg_color != self.encryptionButton.hover_color:
+            for button in self.encryptionButtons:
+                button.config(fg_color=self.sendButton.fg_color)
+            self.encryptionButton.config(fg_color=self.encryptionButton.hover_color)
+            self.encryptor.switchEncryptionMode(AES_MODE)
+
+        elif encryptionButton is not self.CBCButton:
+            self.encryptionButton.config(fg_color=self.sendButton.fg_color)
+            self.CBCButton.config(fg_color=self.encryptionButton.hover_color)
+            self.encryptor.switchEncryptionMode("CBC")
+        else:
+            # Can't turn off CBC MODE
+            pass
+
     def key_press(self, event):
         self.handleSending()
 
@@ -151,7 +192,7 @@ class GUI(customtkinter.CTk):
             return False
 
     def run(self):
-        print("GUI: " + str(threading.current_thread().getName()))
+        #print("GUI: " + str(threading.current_thread().getName()))
         self.mainloop()
 
     def shutDown(self):
