@@ -6,7 +6,7 @@ from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateK
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from encryptor import Encryptor
-from globals import SERVER_PORT, MSG_LENGTH, ACK_MESSAGE
+from globals import SERVER_PORT, MSG_LENGTH, ACK_MESSAGE, ACK_ERROR_MESSAGE
 
 
 class Server:
@@ -49,7 +49,7 @@ class Server:
 
     def listen(self):
         while True:
-            print("SERVER: " + str(threading.current_thread().getName()))
+            #print("SERVER: " + str(threading.current_thread().getName()))
             serverSocketName = self.serverSocket.getsockname()
             try:
                 # print(str(self.serverSocket))
@@ -68,18 +68,30 @@ class Server:
             # print("SERVER: " + str(threading.current_thread().getName()))
             try:
                 (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
-                message = self.clientSocket.recv(MSG_LENGTH).decode()
+                encryptedMessage = self.clientSocket.recv(MSG_LENGTH)
+                message = self.decryptMessage(encryptedMessage)
                 if len(message) > 0:
                     self.logger.log(message)
                     self.clientSocket.send(ACK_MESSAGE.encode())
-                elif len(message) == 0:
+                elif len(message) == 0 and len(encryptedMessage) > 0:
+                    self.logger.log("Message decryption failed! Check if you are using a good encryption mode!")
+                    self.clientSocket.send(ACK_ERROR_MESSAGE.encode())
+                elif len(message) == 0 and len(encryptedMessage) == 0:
                     self.logger.log("Client " + self.clientIp + " has been disconnected!")
                     break
 
             except select.error:
-                self.logger.log("Client " + self.clientIp + " has been disconnected!")
+                self.logger.log("Client " + self.clientIp + " has been disconnected xd!")
                 self.clientSocket.close()
                 break
+
+    def decryptMessage(self, encryptedAESMessage):
+        print(f'session key: {self.sessionKey}')
+        print(f'Encrypted message: {encryptedAESMessage}')
+        decryptedAESMessage = self.encryptor.decryptAES(self.sessionKey, encryptedAESMessage).decode()
+        print(f'message: {decryptedAESMessage}\n')
+
+        return decryptedAESMessage
 
     def keyExchange(self):
         self.privateKey, self.publicKey = self.encryptor.readKeysFromFile()
@@ -102,6 +114,8 @@ class Server:
             )
         )
         self.clientSocket.send(encryptedSessionKey)
+
         print(f'Client public key: {self.clientPublicKey}')
         print(f'Session key: {self.sessionKey}')
+        print(f'Encrypted session key: {encryptedSessionKey}')
         print(f'Encrypted session key: {encryptedSessionKey}')
