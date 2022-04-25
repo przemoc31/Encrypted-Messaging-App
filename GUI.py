@@ -4,7 +4,6 @@ import customtkinter
 from logger import Logger
 from server import Server
 from client import Client
-from globals import HOST_IP, RECIPIENT_IP
 
 
 class GUI(customtkinter.CTk):
@@ -17,7 +16,7 @@ class GUI(customtkinter.CTk):
     encryptionButton: customtkinter.CTkButton = None
     encryptionButtons = []
 
-    def __init__(self, encryptor):
+    def __init__(self, encryptor, HOST_IP, RECIPIENT_IP, SERVER_PORT, CLIENT_PORT):
         super(GUI, self).__init__()
         self.encryptor = encryptor
 
@@ -48,12 +47,12 @@ class GUI(customtkinter.CTk):
 
         # SERVER BUTTON
         self.serverButton = customtkinter.CTkButton(master=self.frame_left, text="SERVER",
-                                                    fg_color=("gray75", "gray30"), command=self.serverButtonEvent)
+                                                    fg_color=("gray75", "gray30"), command=lambda: self.serverButtonEvent(HOST_IP, SERVER_PORT))
         self.serverButton.grid(pady=10, padx=20)
 
         # CLIENT BUTTON
         self.clientButton = customtkinter.CTkButton(master=self.frame_left, text="CLIENT",
-                                                    fg_color=("gray75", "gray30"), command=self.clientButtonEvent)
+                                                    fg_color=("gray75", "gray30"), command=lambda: self.clientButtonEvent(HOST_IP, RECIPIENT_IP, CLIENT_PORT))
         self.clientButton.grid(pady=10, padx=20)
 
         # CBC BUTTON
@@ -111,11 +110,11 @@ class GUI(customtkinter.CTk):
     def setClient(self, client):
         self.client = client
 
-    def serverButtonEvent(self):
+    def serverButtonEvent(self, HOST_IP, SERVER_PORT):
         if self.serverButton.fg_color != self.serverButton.hover_color:
             # TURN ON SERVER
             self.serverButton.config(fg_color=self.serverButton.hover_color)
-            succeed = self.setUpServer()
+            succeed = self.setUpServer(HOST_IP, SERVER_PORT)
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.serverButton.config(fg_color=self.sendButton.fg_color)
@@ -124,11 +123,11 @@ class GUI(customtkinter.CTk):
             self.serverButton.config(fg_color=self.sendButton.fg_color)
             self.server.shutDown()
 
-    def clientButtonEvent(self):
+    def clientButtonEvent(self, HOST_IP, RECIPIENT_IP, CLIENT_PORT):
         if self.clientButton.fg_color != self.clientButton.hover_color:
             # TURN ON CLIENT
             self.clientButton.config(fg_color=self.clientButton.hover_color)
-            succeed = self.setUpClient()
+            succeed = self.setUpClient(HOST_IP, RECIPIENT_IP, CLIENT_PORT)
             if succeed is False:
                 # ERROR IN CONNECTING
                 self.clientButton.config(fg_color=self.sendButton.fg_color)
@@ -173,18 +172,18 @@ class GUI(customtkinter.CTk):
         else:
             customtkinter.set_appearance_mode("dark")
 
-    def setUpServer(self):
+    def setUpServer(self, HOST_IP, SERVER_PORT):
         logger = Logger(self)
-        self.server = Server(HOST_IP, logger, self.encryptor)
+        self.server = Server(HOST_IP, SERVER_PORT, logger, self.encryptor)
         succeed = self.server.run()
         if succeed is True:
             return True
         else:
             return False
 
-    def setUpClient(self):
+    def setUpClient(self, HOST_IP, RECIPIENT_IP, CLIENT_PORT):
         logger = Logger(self)
-        self.client = Client(HOST_IP, logger, self.encryptor)
+        self.client = Client(HOST_IP, CLIENT_PORT, logger, self.encryptor)
         succeed = self.client.connect(RECIPIENT_IP)
         if succeed is True:
             return True

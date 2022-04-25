@@ -2,13 +2,12 @@ import hashlib
 import os
 import secrets
 from base64 import b64encode, b64decode
-
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from globals import PRIVATE_KEY_PATH, PUBLIC_KEY_PATH, SESSION_KEY_LENGTH
+from globals import SESSION_KEY_LENGTH
 
 
 class Encryptor:
@@ -16,10 +15,14 @@ class Encryptor:
     privateKeyPasswordHash = None
     iv = None
     AES_MODE = None
+    pathToPrivate = None
+    pathToPublic = None
 
-    def __init__(self):
+    def __init__(self, PRIVATE_KEY_PATH, PUBLIC_KEY_PATH):
         self.privateKeyPassword = b"JD"
         self.AES_MODE = AES.MODE_CBC
+        self.pathToPrivate = PRIVATE_KEY_PATH
+        self.pathToPublic = PUBLIC_KEY_PATH
 
     def switchEncryptionMode(self, AES_MODE):
         if AES_MODE == "CBC":
@@ -59,20 +62,20 @@ class Encryptor:
         return result
 
     def saveKeysToFile(self, encryptedPrivateKey, publicKey):
-        with open(PRIVATE_KEY_PATH, "w") as privateFile:
+        with open(self.pathToPrivate, "w") as privateFile:
             privateFile.write(encryptedPrivateKey.decode())
 
-        with open(PUBLIC_KEY_PATH, "w") as publicFile:
+        with open(self.pathToPublic, "w") as publicFile:
             publicFile.write(publicKey.decode())
 
     def readKeysFromFile(self):
-        with open(PRIVATE_KEY_PATH, "rb") as key_file:
+        with open(self.pathToPrivate, "rb") as key_file:
             privateKey = serialization.load_pem_private_key(
                 self.decryptAES(self.privateKeyPasswordHash, key_file.read()),
                 password=None
             )
 
-        with open(PUBLIC_KEY_PATH, "rb") as publicFile:
+        with open(self.pathToPublic, "rb") as publicFile:
             publicKey = serialization.load_pem_public_key(publicFile.read())
 
         return privateKey, publicKey
@@ -115,12 +118,12 @@ class Encryptor:
 
     def destroyKeys(self):
         try:
-            os.remove(PRIVATE_KEY_PATH)
+            os.remove(self.pathToPrivate)
         except OSError as e:
             print("Error: %s - %s." % (e.filename, e.strerror))
 
         try:
-            os.remove(PUBLIC_KEY_PATH)
+            os.remove(self.pathToPublic)
         except OSError as e:
             print("Error: %s - %s." % (e.filename, e.strerror))
 

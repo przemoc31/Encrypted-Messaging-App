@@ -6,12 +6,13 @@ from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateK
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from encryptor import Encryptor
-from globals import SERVER_PORT, MSG_LENGTH, ACK_MESSAGE, ACK_ERROR_MESSAGE
+from globals import MSG_LENGTH, ACK_MESSAGE, ACK_ERROR_MESSAGE
 
 
 class Server:
     gui = None
     serverSocket = None
+    serverPort = None
     clientSocket = None
     clientIp = None
     ip = None
@@ -22,8 +23,9 @@ class Server:
     clientPublicKey = None
     sessionKey = None
 
-    def __init__(self, serverIp, logger, encryptor):
+    def __init__(self, serverIp, SERVER_PORT, logger, encryptor):
         self.ip = serverIp
+        self.serverPort = SERVER_PORT
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logger = logger
         self.encryptor = encryptor
@@ -37,7 +39,7 @@ class Server:
 
     def run(self):
         try:
-            self.serverSocket.bind((self.ip, SERVER_PORT))
+            self.serverSocket.bind((self.ip, self.serverPort))
             self.serverSocket.listen(1)
             self.logger.log("Start listening...")
             # print("SERVER: " + str(threading.current_thread().getName()))

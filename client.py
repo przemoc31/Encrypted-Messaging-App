@@ -2,12 +2,13 @@ import socket
 from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateKey
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
-from globals import CLIENT_PORT, MSG_LENGTH
+from globals import MSG_LENGTH
 from encryptor import Encryptor
 
 
 class Client:
     clientSocket = None
+    clientPort = None
     ip = None
     serverIp = None
     logger = None
@@ -17,8 +18,9 @@ class Client:
     serverPublicKey = None
     sessionKey = None
 
-    def __init__(self, clientIp, logger, encryptor):
+    def __init__(self, clientIp, CLIENT_PORT, logger, encryptor):
         self.ip = clientIp
+        self.clientPort = CLIENT_PORT
         self.clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logger = logger
         self.encryptor = encryptor
@@ -30,7 +32,7 @@ class Client:
 
     def connect(self, serverIp):
         try:
-            self.clientSocket.connect((serverIp, CLIENT_PORT))
+            self.clientSocket.connect((serverIp, self.clientPort))
             self.serverIp = serverIp
             self.keyExchange()
             self.logger.log("Establieshed connection with server: " + serverIp)
