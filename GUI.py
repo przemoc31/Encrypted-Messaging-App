@@ -4,6 +4,7 @@ import customtkinter
 from logger import Logger
 from server import Server
 from client import Client
+from fileHandler import FileHandler
 
 
 class GUI(customtkinter.CTk):
@@ -13,6 +14,7 @@ class GUI(customtkinter.CTk):
     encryptor = None
     server: Server = None
     client: Client = None
+    fileHandler: FileHandler = None
     encryptionButton: customtkinter.CTkButton = None
     encryptionButtons = []
 
@@ -47,37 +49,44 @@ class GUI(customtkinter.CTk):
 
         # SERVER BUTTON
         self.serverButton = customtkinter.CTkButton(master=self.frame_left, text="SERVER",
-                                                    fg_color=("gray75", "gray30"), command=lambda: self.serverButtonEvent(HOST_IP, SERVER_PORT))
+                                                    fg_color=("gray75", "gray30"),
+                                                    command=lambda: self.serverButtonEvent(HOST_IP, SERVER_PORT))
         self.serverButton.grid(pady=10, padx=20)
 
         # CLIENT BUTTON
         self.clientButton = customtkinter.CTkButton(master=self.frame_left, text="CLIENT",
-                                                    fg_color=("gray75", "gray30"), command=lambda: self.clientButtonEvent(HOST_IP, RECIPIENT_IP, CLIENT_PORT))
+                                                    fg_color=("gray75", "gray30"),
+                                                    command=lambda: self.clientButtonEvent(HOST_IP, RECIPIENT_IP,
+                                                                                           CLIENT_PORT))
         self.clientButton.grid(pady=10, padx=20)
 
         # CBC BUTTON
         self.CBCButton = customtkinter.CTkButton(master=self.frame_left, text="CBC",
-                                                    fg_color=("gray75", "gray30"), command=lambda: self.encryptionModeButtonEvent("CBC", self.CBCButton))
+                                                 fg_color=("gray75", "gray30"),
+                                                 command=lambda: self.encryptionModeButtonEvent("CBC", self.CBCButton))
         self.CBCButton.place(x=20, y=200)
 
         # ECB BUTTON
         self.ECBButton = customtkinter.CTkButton(master=self.frame_left, text="ECB",
-                                                    fg_color=("gray75", "gray30"), command=lambda: self.encryptionModeButtonEvent("ECB", self.ECBButton))
+                                                 fg_color=("gray75", "gray30"),
+                                                 command=lambda: self.encryptionModeButtonEvent("ECB", self.ECBButton))
         self.ECBButton.place(x=20, y=250)
 
         # CFB BUTTON
         self.CFBButton = customtkinter.CTkButton(master=self.frame_left, text="CFB",
-                                                    fg_color=("gray75", "gray30"), command=lambda: self.encryptionModeButtonEvent("CFB", self.CFBButton))
+                                                 fg_color=("gray75", "gray30"),
+                                                 command=lambda: self.encryptionModeButtonEvent("CFB", self.CFBButton))
         self.CFBButton.place(x=20, y=300)
 
         # OFB BUTTON
         self.OFBButton = customtkinter.CTkButton(master=self.frame_left, text="OFB",
-                                                    fg_color=("gray75", "gray30"), command=lambda: self.encryptionModeButtonEvent("OFB", self.OFBButton))
+                                                 fg_color=("gray75", "gray30"),
+                                                 command=lambda: self.encryptionModeButtonEvent("OFB", self.OFBButton))
         self.OFBButton.place(x=20, y=350)
 
         # LIGHT MODE SWITCH
         self.modeSwitch = customtkinter.CTkSwitch(master=self.frame_left, text="Light Mode", command=self.switchMode)
-        self.modeSwitch.place(x=20, y=400)
+        self.modeSwitch.place(x=20, y=450)
 
         # MESSAGE BOX
         self.messageBox = tkinter.Label(master=self.frame_right, font=("Helvetica", 12), fg='#fff',
@@ -89,6 +98,12 @@ class GUI(customtkinter.CTk):
         self.messageInput = customtkinter.CTkEntry(master=self.frame_right, width=550,
                                                    placeholder_text="Send a message")
         self.messageInput.place(y=500, x=20)
+
+        # FILE BUTTON
+        self.fileButton = customtkinter.CTkButton(master=self.frame_right, text="FILE",
+                                                  fg_color=("gray75", "gray30"),
+                                                  command=lambda: self.openFile())
+        self.fileButton.place(y=450, x=600)
 
         # CLIENT BUTTON
         self.sendButton = customtkinter.CTkButton(master=self.frame_right, text="SEND", fg_color=("gray75", "gray30"),
@@ -153,6 +168,10 @@ class GUI(customtkinter.CTk):
             # Can't turn off CBC MODE
             pass
 
+    def openFile(self):
+        self.fileHandler = FileHandler()
+        self.fileHandler.openFileDialog()
+
     def key_press(self, event):
         self.handleSending()
 
@@ -191,7 +210,7 @@ class GUI(customtkinter.CTk):
             return False
 
     def run(self):
-        #print("GUI: " + str(threading.current_thread().getName()))
+        # print("GUI: " + str(threading.current_thread().getName()))
         self.mainloop()
 
     def shutDown(self):
