@@ -19,7 +19,7 @@ class FileHandler:
             filePath = file.name
             self.fileName = filePath.rsplit('/', 1)[-1]
             print(self.fileName)
-            file.close()
+            #file.close()
             #print(type(self.content))
             #print(self.content)
             #self.saveToFile()

@@ -1,5 +1,10 @@
+import math
 import sys
+import threading
+import time
 import tkinter
+from tkinter import ttk
+from tkinter import filedialog
 import customtkinter
 from logger import Logger
 from server import Server
@@ -20,6 +25,8 @@ class GUI(customtkinter.CTk):
 
     def __init__(self, encryptor, fileHandler, HOST_IP, RECIPIENT_IP, SERVER_PORT, CLIENT_PORT):
         super(GUI, self).__init__()
+        self.valueLabel = None
+        self.progressBar = None
         self.encryptor = encryptor
         self.fileHandler = fileHandler
 
@@ -170,8 +177,38 @@ class GUI(customtkinter.CTk):
             pass
 
     def openFile(self):
-        self.client.openFileDialog()
+        file = filedialog.askopenfile(mode='rb', filetypes=[('Text files', '*.txt'),
+                                                            ('Images', '*.png'),
+                                                            ('Documents', '*.pdf'),
+                                                            ('Videos', '*.avi')])
 
+        self.progressBar = ttk.Progressbar(master=self, orient='horizontal', mode='determinate', length=280)
+        self.progressBar.grid(column=1, row=0, columnspan=5, padx=10, pady=20)
+        self.valueLabel = tkinter.Label(master=self, text=self.updateProgressLabel(), font=('Helvetica', 12),
+                                        fg='#fff', bg=self.frame_left.fg_color[1])
+        self.valueLabel.place(x=535, y=320)
+
+        fileOpener = threading.Thread(target=self.client.openFile, args=(file, self.progressBar),
+                                           name="File opener", daemon=True)
+        fileOpener.start()
+
+        progressBarChecker = threading.Thread(target=self.progressBarMonitor, name="Monitor", daemon=True)
+        progressBarChecker.start()
+
+        if file is not None:
+            file.close()
+
+    def progressBarMonitor(self):
+        while True:
+            print(self.progressBar['value'])
+            self.valueLabel['text'] = self.updateProgressLabel()
+            if self.progressBar['value'] >= 100:
+                self.progressBar.grid_remove()
+                self.valueLabel.destroy()
+                break
+
+    def updateProgressLabel(self):
+        return f"{round(self.progressBar['value'], 1)}%"
 
     def key_press(self, event):
         self.handleSending()

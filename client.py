@@ -1,3 +1,4 @@
+import math
 import socket
 from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateKey
 from cryptography.hazmat.primitives import serialization, hashes
@@ -8,6 +9,7 @@ from fileHandler import FileHandler
 from globals import MSG_LENGTH
 from encryptor import Encryptor
 import time
+
 
 class Client:
     clientSocket = None
@@ -46,18 +48,22 @@ class Client:
             self.logger.log("Couldn't connect to server: " + serverIp)
             return False
 
-    def openFileDialog(self):
-        self.fileHandler.openFileDialog()
-        self.sendFile(self.fileHandler.content)
+    def openFile(self, file, progressBar):
+        self.fileHandler.readFromFile(file)
+        self.sendFile(self.fileHandler.content, progressBar)
 
-    def sendFile(self, file):
+    def sendFile(self, file, progressBar):
         try:
             self.clientSocket.send(self.encryptMessage("file_begin".encode()))
             bytesInFile = len(self.fileHandler.content)
             for i in range(0, bytesInFile, 400):
-                testMessage = self.fileHandler.content[i:i+400]
+                testMessage = self.fileHandler.content[i:i + 400]
                 self.clientSocket.send(self.encryptMessage(testMessage))
                 time.sleep(0.00000001)
+                value = (i / bytesInFile) * 100
+                self.updateProgressBar(progressBar, value)
+
+            self.updateProgressBar(progressBar, 100)
             self.clientSocket.send(self.encryptMessage("file_end".encode()))
             time.sleep(0.00000001)
             self.clientSocket.send(self.encryptMessage(self.fileHandler.fileName.encode()))
@@ -72,6 +78,9 @@ class Client:
                 self.logger.log("You are not allowed to send a message. Connect to the server!")
 
         return None
+
+    def updateProgressBar(self, progressBar, value):
+        progressBar['value'] = value
 
     def sendMessage(self, message):
         # print(message)
@@ -121,9 +130,9 @@ class Client:
             self.sessionKey = self.privateKey.decrypt(
                 encryptedSessionKey,
                 padding.OAEP(
-                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                     algorithm=hashes.SHA256(),
-                     label=None
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None
                 ))
         except socket.error:
             if self.serverIp is not None:
@@ -132,5 +141,5 @@ class Client:
                 self.logger.log("You are not allowed to exchange the public keys. Connect to the server!")
 
         print(f'Server public key: {self.serverPublicKey}')
-        #print(f'Encrypted Session key: {encryptedSessionKey}')
+        # print(f'Encrypted Session key: {encryptedSessionKey}')
         print(f'Decrypted Session key: {self.sessionKey}')
