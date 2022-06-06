@@ -5,6 +5,7 @@ ROB_SERVER_PORT = 2022
 
 
 MSG_LENGTH = 1024
+MSG_FILE_LENGTH = 750
 
 MAIN_PRIVATE_KEY_PATH = "mainKeys/private_key.pem"
 MAIN_PUBLIC_KEY_PATH = "mainKeys/public_key.pem"

@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from base64 import b64encode
 
 from fileHandler import FileHandler
-from globals import MSG_LENGTH
+from globals import MSG_LENGTH, MSG_FILE_LENGTH
 from encryptor import Encryptor
 import time
 
@@ -56,8 +56,8 @@ class Client:
         try:
             self.clientSocket.send(self.encryptMessage("file_begin".encode()))
             bytesInFile = len(self.fileHandler.content)
-            for i in range(0, bytesInFile, 400):
-                testMessage = self.fileHandler.content[i:i + 400]
+            for i in range(0, bytesInFile, MSG_FILE_LENGTH):
+                testMessage = self.fileHandler.content[i:i + MSG_FILE_LENGTH]
                 self.clientSocket.send(self.encryptMessage(testMessage))
                 time.sleep(0.00000001)
                 value = (i / bytesInFile) * 100
