@@ -3,7 +3,6 @@ import os
 import secrets
 from base64 import b64encode, b64decode
 from Crypto.Cipher import AES
-from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -50,15 +49,16 @@ class Encryptor:
             return b64encode(cipher.encrypt(pad(data, AES.block_size)))
 
     def decryptAES(self, key, data):
-        if self.AES_MODE != AES.MODE_ECB:
-            cipher = AES.new(key, self.AES_MODE, self.iv)
-        else:
-            cipher = AES.new(key, self.AES_MODE)
-        data = b64decode(data)
         try:
+            if self.AES_MODE != AES.MODE_ECB:
+                cipher = AES.new(key, self.AES_MODE, self.iv)
+            else:
+                cipher = AES.new(key, self.AES_MODE)
+            data = b64decode(data)
+
             result = unpad(cipher.decrypt(data), AES.block_size)
         except ValueError:
-            result = bytes()
+            result = b64encode(self.generateSessionKey())
 
         return result
 

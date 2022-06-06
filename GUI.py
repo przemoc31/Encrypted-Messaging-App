@@ -18,9 +18,10 @@ class GUI(customtkinter.CTk):
     encryptionButton: customtkinter.CTkButton = None
     encryptionButtons = []
 
-    def __init__(self, encryptor, HOST_IP, RECIPIENT_IP, SERVER_PORT, CLIENT_PORT):
+    def __init__(self, encryptor, fileHandler, HOST_IP, RECIPIENT_IP, SERVER_PORT, CLIENT_PORT):
         super(GUI, self).__init__()
         self.encryptor = encryptor
+        self.fileHandler = fileHandler
 
         # GUI SETTINGS
         customtkinter.set_appearance_mode("System")
@@ -169,8 +170,8 @@ class GUI(customtkinter.CTk):
             pass
 
     def openFile(self):
-        self.fileHandler = FileHandler()
-        self.fileHandler.openFileDialog()
+        self.client.openFileDialog()
+
 
     def key_press(self, event):
         self.handleSending()
@@ -193,7 +194,7 @@ class GUI(customtkinter.CTk):
 
     def setUpServer(self, HOST_IP, SERVER_PORT):
         logger = Logger(self)
-        self.server = Server(HOST_IP, SERVER_PORT, logger, self.encryptor)
+        self.server = Server(HOST_IP, SERVER_PORT, logger, self.encryptor, self.fileHandler)
         succeed = self.server.run()
         if succeed is True:
             return True
@@ -202,7 +203,7 @@ class GUI(customtkinter.CTk):
 
     def setUpClient(self, HOST_IP, RECIPIENT_IP, CLIENT_PORT):
         logger = Logger(self)
-        self.client = Client(HOST_IP, CLIENT_PORT, logger, self.encryptor)
+        self.client = Client(HOST_IP, CLIENT_PORT, logger, self.encryptor, self.fileHandler)
         succeed = self.client.connect(RECIPIENT_IP)
         if succeed is True:
             return True

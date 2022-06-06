@@ -6,7 +6,8 @@ from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey, _RSAPrivateK
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from encryptor import Encryptor
-from globals import MSG_LENGTH, ACK_MESSAGE, ACK_ERROR_MESSAGE
+from fileHandler import FileHandler
+from globals import MSG_LENGTH, ACK_MESSAGE, ACK_MESSAGE_FILE, ACK_ERROR_MESSAGE
 
 
 class Server:
@@ -22,13 +23,15 @@ class Server:
     publicKey: _RSAPublicKey = None
     clientPublicKey = None
     sessionKey = None
+    fileHandler: FileHandler = None
 
-    def __init__(self, serverIp, SERVER_PORT, logger, encryptor):
+    def __init__(self, serverIp, SERVER_PORT, logger, encryptor, fileHandler):
         self.ip = serverIp
         self.serverPort = SERVER_PORT
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logger = logger
         self.encryptor = encryptor
+        self.fileHandler = fileHandler
 
     def shutDown(self):
         if self.clientSocket is not None:
@@ -59,38 +62,58 @@ class Server:
                 self.clientIp = clientIpPort[0]
                 self.keyExchange()
                 self.logger.log("Establieshed connection with client: " + str(self.clientIp))
-                receiverThread = threading.Thread(target=self.receiveMessage, name="Server Receiver", daemon=True)
+                receiverThread = threading.Thread(target=self.receiveController, name="Server Receiver", daemon=True)
                 receiverThread.start()
             except socket.error:
                 self.logger.log("Server Socket: " + str(serverSocketName) + " has been closed")
                 break
 
-    def receiveMessage(self):
+    def receiveController(self):
         while True:
             # print("SERVER: " + str(threading.current_thread().getName()))
             try:
                 (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
                 encryptedMessage = self.clientSocket.recv(MSG_LENGTH)
-                message = self.decryptMessage(encryptedMessage)
+                message = self.decryptMessage(encryptedMessage).decode()
                 if len(message) > 0:
+                    if message == "file_begin":
+                        self.receiveFile()
+                        self.clientSocket.send(ACK_MESSAGE_FILE.encode())
+                    else:
+                        self.logger.log(message)
+                        self.clientSocket.send(ACK_MESSAGE.encode())
+                elif len(message) == 0 and len(encryptedMessage) > 0:
+                    #self.logger.log("Message decryption failed! Check if you are using a good encryption mode!")
                     self.logger.log(message)
                     self.clientSocket.send(ACK_MESSAGE.encode())
-                elif len(message) == 0 and len(encryptedMessage) > 0:
-                    self.logger.log("Message decryption failed! Check if you are using a good encryption mode!")
-                    self.clientSocket.send(ACK_ERROR_MESSAGE.encode())
                 elif len(message) == 0 and len(encryptedMessage) == 0:
                     self.logger.log("Client " + self.clientIp + " has been disconnected!")
                     break
 
             except select.error:
-                self.logger.log("Client " + self.clientIp + " has been disconnected xd!")
+                self.logger.log("Client " + self.clientIp + " has been disconnected!")
                 self.clientSocket.close()
                 break
+
+    def receiveFile(self):
+        (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
+        decryptedFile = b''
+        while True:
+            encryptedMessage = self.clientSocket.recv(MSG_LENGTH)
+            message = self.decryptMessage(encryptedMessage)
+            if message == "file_end".encode():
+                break
+            decryptedFile += message
+        encryptedFileName = self.clientSocket.recv(MSG_LENGTH)
+        fileName = self.decryptMessage(encryptedFileName).decode()
+        fileName = f"{fileName.rsplit('.', 1)[0]}_decrypted.{fileName.rsplit('.', 1)[-1]}"
+        self.fileHandler.saveToFile(decryptedFile, fileName)
+
 
     def decryptMessage(self, encryptedAESMessage):
         print(f'session key: {self.sessionKey}')
         print(f'Encrypted message: {encryptedAESMessage}')
-        decryptedAESMessage = self.encryptor.decryptAES(self.sessionKey, encryptedAESMessage).decode()
+        decryptedAESMessage = self.encryptor.decryptAES(self.sessionKey, encryptedAESMessage)
         print(f'message: {decryptedAESMessage}\n')
 
         return decryptedAESMessage
