@@ -55,18 +55,20 @@ class Client:
     def sendFile(self, file, progressBar):
         try:
             self.clientSocket.send(self.encryptMessage("file_begin".encode()))
+            self.clientSocket.send(self.encryptMessage(self.fileHandler.fileName.encode()))
             bytesInFile = len(self.fileHandler.content)
             for i in range(0, bytesInFile, MSG_FILE_LENGTH):
                 testMessage = self.fileHandler.content[i:i + MSG_FILE_LENGTH]
                 self.clientSocket.send(self.encryptMessage(testMessage))
-                time.sleep(0.00000001)
+                savedConfirmation = self.clientSocket.recv(5)
+                time.sleep(0.01)
                 value = (i / bytesInFile) * 100
                 self.updateProgressBar(progressBar, value)
 
             self.updateProgressBar(progressBar, 100)
             self.clientSocket.send(self.encryptMessage("file_end".encode()))
-            time.sleep(0.00000001)
-            self.clientSocket.send(self.encryptMessage(self.fileHandler.fileName.encode()))
+            time.sleep(0.01)
+
             ackMessage = self.clientSocket.recv(MSG_LENGTH).decode()
             if ackMessage is not None:
                 self.logger.log(ackMessage)

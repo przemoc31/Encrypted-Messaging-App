@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from encryptor import Encryptor
 from fileHandler import FileHandler
-from globals import MSG_LENGTH, ACK_MESSAGE, ACK_MESSAGE_FILE, ACK_ERROR_MESSAGE
+from globals import MSG_LENGTH, ACK_MESSAGE, ACK_MESSAGE_FILE, MSG_FILE_LENGTH
 
 
 class Server:
@@ -97,17 +97,32 @@ class Server:
 
     def receiveFile(self):
         (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
-        decryptedFile = b''
-        while True:
-            encryptedMessage = self.clientSocket.recv(MSG_LENGTH)
-            message = self.decryptMessage(encryptedMessage)
-            if message == "file_end".encode():
-                break
-            decryptedFile += message
+
         encryptedFileName = self.clientSocket.recv(MSG_LENGTH)
         fileName = self.decryptMessage(encryptedFileName).decode()
         fileName = f"{fileName.rsplit('.', 1)[0]}_decrypted.{fileName.rsplit('.', 1)[-1]}"
-        self.fileHandler.saveToFile(decryptedFile, fileName)
+        #decryptedMessage = b''
+        messages = []
+        threadDelegated = False
+        while True:
+            encryptedMessage = self.clientSocket.recv(MSG_LENGTH)
+            message = self.decryptMessage(encryptedMessage)
+            #messages.append(message)
+            #fileSaver = threading.Thread(target=self.fileHandler.saveToFile, args=(messages, file),
+            #                              name="File saver", daemon=True)
+            #fileSaver.start()
+
+            #threadDelegated = True
+            if message == "file_end".encode():
+                break
+            self.fileHandler.saveToFile(message, fileName)
+            self.clientSocket.send("saved".encode())
+
+        #decryptedMessage += message
+        #for i in range(0, len(decryptedMessage), MSG_FILE_LENGTH):
+        #length = len(decryptedMessage)
+
+
 
 
     def decryptMessage(self, encryptedAESMessage):

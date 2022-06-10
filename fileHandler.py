@@ -1,4 +1,6 @@
 from tkinter import filedialog
+from globals import MSG_FILE_LENGTH
+import time
 
 
 class FileHandler:
@@ -19,12 +21,9 @@ class FileHandler:
             filePath = file.name
             self.fileName = filePath.rsplit('/', 1)[-1]
             print(self.fileName)
-            #file.close()
-            #print(type(self.content))
-            #print(self.content)
-            #self.saveToFile()
+
 
     def saveToFile(self, message, fileName):
-        with open(fileName, 'wb') as file:
-            decryptedMessage = message
-            file.write(decryptedMessage)
+        with open(fileName, 'ab') as file:
+            file.write(message)
+            time.sleep(0.000001)
