@@ -54,7 +54,7 @@ class Client:
 
     def sendFile(self, file, progressBar):
         try:
-            self.clientSocket.send(self.encryptMessage("file_begin".encode()))
+            self.clientSocket.send("file_begin".encode())
             self.clientSocket.send(self.encryptMessage(self.fileHandler.fileName.encode()))
             bytesInFile = len(self.fileHandler.content)
             for i in range(0, bytesInFile, MSG_FILE_LENGTH):

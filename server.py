@@ -70,20 +70,18 @@ class Server:
 
     def receiveController(self):
         while True:
-            # print("SERVER: " + str(threading.current_thread().getName()))
             try:
                 (readyToRead, readyToWrite, connectionError) = select.select([self.clientSocket], [], [])
                 encryptedMessage = self.clientSocket.recv(MSG_LENGTH)
                 message = self.decryptMessage(encryptedMessage).decode()
                 if len(message) > 0:
-                    if message == "file_begin":
+                    if encryptedMessage.decode() == "file_begin":
                         self.receiveFile()
                         self.clientSocket.send(ACK_MESSAGE_FILE.encode())
                     else:
                         self.logger.log(message)
                         self.clientSocket.send(ACK_MESSAGE.encode())
                 elif len(message) == 0 and len(encryptedMessage) > 0:
-                    #self.logger.log("Message decryption failed! Check if you are using a good encryption mode!")
                     self.logger.log(message)
                     self.clientSocket.send(ACK_MESSAGE.encode())
                 elif len(message) == 0 and len(encryptedMessage) == 0:
@@ -108,6 +106,9 @@ class Server:
             encryptedMessage = self.clientSocket.recv(MSG_LENGTH)
             message = self.decryptMessage(encryptedMessage)
 
+            if message == "file_end".encode():
+                break
+
             if threadDelegated:
                 fileSaver.join()
 
@@ -117,15 +118,9 @@ class Server:
             if not threadDelegated:
                 threadDelegated = True
 
-            if message == "file_end".encode():
-                break
             self.clientSocket.send("next".encode())
 
         self.fileHandler.closeFile(file)
-
-
-
-
 
     def decryptMessage(self, encryptedAESMessage):
         #print(f'session key: {self.sessionKey}')
