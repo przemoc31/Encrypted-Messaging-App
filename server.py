@@ -101,35 +101,37 @@ class Server:
         encryptedFileName = self.clientSocket.recv(MSG_LENGTH)
         fileName = self.decryptMessage(encryptedFileName).decode()
         fileName = f"{fileName.rsplit('.', 1)[0]}_decrypted.{fileName.rsplit('.', 1)[-1]}"
-        #decryptedMessage = b''
-        messages = []
+        file = self.fileHandler.openFile(fileName)
         threadDelegated = False
+        fileSaver = None
         while True:
             encryptedMessage = self.clientSocket.recv(MSG_LENGTH)
             message = self.decryptMessage(encryptedMessage)
-            #messages.append(message)
-            #fileSaver = threading.Thread(target=self.fileHandler.saveToFile, args=(messages, file),
-            #                              name="File saver", daemon=True)
-            #fileSaver.start()
 
-            #threadDelegated = True
+            if threadDelegated:
+                fileSaver.join()
+
+            fileSaver = threading.Thread(target=self.fileHandler.saveToFile, args=(message, file),
+                                         name="File saver", daemon=True)
+            fileSaver.start()
+            if not threadDelegated:
+                threadDelegated = True
+
             if message == "file_end".encode():
                 break
-            self.fileHandler.saveToFile(message, fileName)
-            self.clientSocket.send("saved".encode())
+            self.clientSocket.send("next".encode())
 
-        #decryptedMessage += message
-        #for i in range(0, len(decryptedMessage), MSG_FILE_LENGTH):
-        #length = len(decryptedMessage)
+        self.fileHandler.closeFile(file)
+
 
 
 
 
     def decryptMessage(self, encryptedAESMessage):
-        print(f'session key: {self.sessionKey}')
-        print(f'Encrypted message: {encryptedAESMessage}')
+        #print(f'session key: {self.sessionKey}')
+        #print(f'Encrypted message: {encryptedAESMessage}')
         decryptedAESMessage = self.encryptor.decryptAES(self.sessionKey, encryptedAESMessage)
-        print(f'message: {decryptedAESMessage}\n')
+        #print(f'message: {decryptedAESMessage}\n')
 
         return decryptedAESMessage
 
@@ -155,7 +157,7 @@ class Server:
         )
         self.clientSocket.send(encryptedSessionKey)
 
-        print(f'Client public key: {self.clientPublicKey}')
-        print(f'Session key: {self.sessionKey}')
-        print(f'Encrypted session key: {encryptedSessionKey}')
-        print(f'Encrypted session key: {encryptedSessionKey}')
+        #print(f'Client public key: {self.clientPublicKey}')
+        #print(f'Session key: {self.sessionKey}')
+        #print(f'Encrypted session key: {encryptedSessionKey}')
+        #print(f'Encrypted session key: {encryptedSessionKey}')

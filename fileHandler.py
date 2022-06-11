@@ -22,8 +22,13 @@ class FileHandler:
             self.fileName = filePath.rsplit('/', 1)[-1]
             print(self.fileName)
 
+    def openFile(self, fileName):
+        file = open(fileName, 'ab')
+        return file
 
-    def saveToFile(self, message, fileName):
-        with open(fileName, 'ab') as file:
-            file.write(message)
-            time.sleep(0.000001)
+    def saveToFile(self, message, file):
+        file.write(message)
+        time.sleep(0.000001)
+
+    def closeFile(self, file):
+        file.close()

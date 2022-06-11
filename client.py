@@ -60,7 +60,7 @@ class Client:
             for i in range(0, bytesInFile, MSG_FILE_LENGTH):
                 testMessage = self.fileHandler.content[i:i + MSG_FILE_LENGTH]
                 self.clientSocket.send(self.encryptMessage(testMessage))
-                savedConfirmation = self.clientSocket.recv(5)
+                nextBytes = self.clientSocket.recv(4)
                 time.sleep(0.01)
                 value = (i / bytesInFile) * 100
                 self.updateProgressBar(progressBar, value)
@@ -103,17 +103,17 @@ class Client:
             self.sendMessage(message)
 
     def encryptMessage(self, message):
-        print(f'session key: {self.sessionKey}')
+        #print(f'session key: {self.sessionKey}')
         encryptedAESMessage = self.encryptor.encryptAES(self.sessionKey, message)
-        print(f'message: {message}')
-        print(f'Encrypted message: {encryptedAESMessage}\n')
+        #print(f'message: {message}')
+        #print(f'Encrypted message: {encryptedAESMessage}\n')
         return encryptedAESMessage
 
     def encryptMessageWithKey(self, message, key):
-        print(f'session key: {self.sessionKey}')
+        #print(f'session key: {self.sessionKey}')
         encryptedAESMessage = self.encryptor.encryptAES(key, message)
-        print(f'message: {message}')
-        print(f'Encrypted message: {encryptedAESMessage}\n')
+        #print(f'message: {message}')
+        #print(f'Encrypted message: {encryptedAESMessage}\n')
         return encryptedAESMessage
 
     def keyExchange(self):
@@ -142,6 +142,6 @@ class Client:
             else:
                 self.logger.log("You are not allowed to exchange the public keys. Connect to the server!")
 
-        print(f'Server public key: {self.serverPublicKey}')
+        #print(f'Server public key: {self.serverPublicKey}')
         # print(f'Encrypted Session key: {encryptedSessionKey}')
-        print(f'Decrypted Session key: {self.sessionKey}')
+        #print(f'Decrypted Session key: {self.sessionKey}')
